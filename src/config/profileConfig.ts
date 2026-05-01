@@ -9,10 +9,10 @@ export const profileConfig: ProfileConfig = {
 	avatar: "assets/images/avatar.avif",
 
 	// 名字
-	name: "Firefly",
+	name: "wonder",
 
 	// 个人签名
-	bio: "Hello, I'm Firefly.",
+	bio: "记录技术、生活与灵感。",
 
 	// 链接配置
 	// 已经预装的图标集：fa7-brands，fa7-regular，fa7-solid，material-symbols，simple-icons
@@ -37,12 +37,6 @@ export const profileConfig: ProfileConfig = {
 			name: "知乎",
 			icon: "simple-icons:zhihu",
 			url: "https://www.zhihu.com/people/ttha-52",
-			showName: false,
-		},
-		{
-			name: "Email",
-			icon: "fa7-solid:envelope",
-			url: "mailto:xiaye@msn.com",
 			showName: false,
 		},
 		{
