@@ -11,7 +11,7 @@ interface Props {
 
 const { currentPostCategory } = Astro.props as Props;
 
-const categories = await getCategoryList();
+const categories = (await getCategoryList()).filter((cat) => cat.depth === 0);
 const totalPosts = (await getSortedPostsList()).length;
 const homeUrl = url("/");
 const archiveUrl = url("/archive/");
@@ -54,8 +54,9 @@ const archiveUrl = url("/archive/");
               class="category-pill text-sm px-3 py-1 rounded-lg whitespace-nowrap
                      transition-colors duration-150 ease-out flex items-center justify-center"
               data-category-name={cat.name}
+              data-category-parent=""
             >
-              {cat.name}
+              {cat.leafName}
               <span class="text-xs opacity-60 ml-1">{cat.count}</span>
             </a>
           ))
@@ -188,8 +189,11 @@ const archiveUrl = url("/archive/");
 
     if (activeCategory) {
       pills.forEach((pill) => {
-        if (pill.getAttribute("data-category-name") === activeCategory) {
+        const name = pill.getAttribute("data-category-name") || "";
+        if (name === activeCategory) {
           pill.setAttribute("data-active", "");
+        } else if (name && activeCategory.startsWith(`${name}/`)) {
+          pill.setAttribute("data-soft-active", "");
         }
       });
       return;
@@ -203,7 +207,8 @@ const archiveUrl = url("/archive/");
 
     if (postCategory) {
       pills.forEach((pill) => {
-        if (pill.getAttribute("data-category-name") === postCategory) {
+        const name = pill.getAttribute("data-category-name") || "";
+        if (name === postCategory || (name && postCategory.startsWith(`${name}/`))) {
           pill.setAttribute("data-soft-active", "");
         }
       });

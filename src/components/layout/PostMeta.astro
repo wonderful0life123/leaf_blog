@@ -3,6 +3,10 @@ import { Icon } from "astro-icon/components";
 import { commentConfig } from "@/config";
 import I18nKey from "@/i18n/i18nKey";
 import { i18n } from "@/i18n/translation";
+import {
+	getCategoryPathFromSegments,
+	getCategorySegments,
+} from "@/utils/category-utils";
 import { formatDateToYYYYMMDD } from "@/utils/date-utils";
 import { getCategoryUrl, getTagUrl } from "@/utils/url-utils";
 
@@ -40,6 +44,11 @@ const {
 } = Astro.props;
 
 const path = customPath || (id ? `/posts/${id}` : "");
+const categorySegments = getCategorySegments(category);
+const categoryCrumbs = categorySegments.map((segment, index) => ({
+	name: segment,
+	path: getCategoryPathFromSegments(categorySegments.slice(0, index + 1)),
+}));
 ---
 
 <div
@@ -94,14 +103,30 @@ const path = customPath || (id ? `/posts/${id}` : "");
       <Icon name="material-symbols:book-2-outline-rounded" class="text-xl" />
     </div>
     <div class="flex flex-row flex-nowrap items-center">
-      <a
-        href={getCategoryUrl(category || "")}
-        aria-label={`View all posts in the ${category} category`}
-        class="link-lg transition text-50 text-sm font-medium
-                            hover:text-(--primary) dark:hover:text-(--primary) whitespace-nowrap"
-      >
-        {category || i18n(I18nKey.uncategorized)}
-      </a>
+      {categoryCrumbs.length > 0 ? (
+        categoryCrumbs.map((crumb, index) => (
+          <>
+            {index > 0 && <span class="mx-1.5 text-(--meta-divider) text-sm">/</span>}
+            <a
+              href={getCategoryUrl(crumb.path)}
+              aria-label={`View all posts in the ${crumb.path} category`}
+              class="link-lg transition text-50 text-sm font-medium
+                                  hover:text-(--primary) dark:hover:text-(--primary) whitespace-nowrap"
+            >
+              {crumb.name}
+            </a>
+          </>
+        ))
+      ) : (
+        <a
+          href={getCategoryUrl(category || "")}
+          aria-label="View uncategorized posts"
+          class="link-lg transition text-50 text-sm font-medium
+                              hover:text-(--primary) dark:hover:text-(--primary) whitespace-nowrap"
+        >
+          {i18n(I18nKey.uncategorized)}
+        </a>
+      )}
     </div>
   </div>
 

@@ -1,5 +1,6 @@
 import I18nKey from "@i18n/i18nKey";
 import { i18n } from "@i18n/translation";
+import { normalizeCategoryPath } from "@utils/category-utils";
 
 /**
  * 移除文件扩展名（.md, .mdx, .markdown）
@@ -32,13 +33,14 @@ export function getTagUrl(tag: string): string {
 }
 
 export function getCategoryUrl(category: string | null): string {
+	const categoryPath = normalizeCategoryPath(category);
 	if (
 		!category ||
-		category.trim() === "" ||
-		category.trim().toLowerCase() === i18n(I18nKey.uncategorized).toLowerCase()
+		categoryPath === "" ||
+		categoryPath.toLowerCase() === i18n(I18nKey.uncategorized).toLowerCase()
 	)
 		return url("/archive/?uncategorized=true");
-	return url(`/archive/?category=${encodeURIComponent(category.trim())}`);
+	return url(`/archive/?category=${encodeURIComponent(categoryPath)}`);
 }
 
 export function getDir(path: string): string {

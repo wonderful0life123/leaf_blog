@@ -1,15 +1,48 @@
 ---
-import ButtonLink from "@/components/common/ButtonLink.astro";
+import CategoryTree from "@/components/widget/CategoryTree.svelte";
 import WidgetLayout from "@/components/common/WidgetLayout.astro";
 import { sidebarLayoutConfig } from "@/config";
 import I18nKey from "@/i18n/i18nKey";
 import { i18n } from "@/i18n/translation";
+import type { Category } from "@/utils/content-utils";
 import { getCategoryList } from "@/utils/content-utils";
 import { url } from "@/utils/url-utils";
 
 const categories = await getCategoryList();
 
-const COLLAPSED_HEIGHT = "7.5rem";
+type CategoryTreeNode = Category & {
+	children: CategoryTreeNode[];
+};
+
+function buildCategoryTree(items: Category[]): CategoryTreeNode[] {
+	const nodeMap = new Map<string, CategoryTreeNode>();
+	for (const item of items) {
+		nodeMap.set(item.name, { ...item, children: [] });
+	}
+
+	const roots: CategoryTreeNode[] = [];
+	for (const item of items) {
+		const node = nodeMap.get(item.name);
+		if (!node) continue;
+
+		if (item.parent) {
+			const parent = nodeMap.get(item.parent);
+			if (parent) {
+				parent.children.push(node);
+				parent.hasChildren = true;
+				continue;
+			}
+		}
+
+		roots.push(node);
+	}
+
+	return roots;
+}
+
+const categoryTree = buildCategoryTree(categories);
+
+const COLLAPSED_HEIGHT = "10.5rem";
 
 // 从配置中获取分类组件的折叠阈值
 const categoriesComponent = [
@@ -33,22 +66,48 @@ const style = Astro.props.style;
 const archivePath = url("/archive/");
 ---
 
-<WidgetLayout name={i18n(I18nKey.categories)} id="categories" isCollapsed={isCollapsed} collapsedHeight={COLLAPSED_HEIGHT}
-                class={className} style={style}
+<WidgetLayout
+	name={i18n(I18nKey.categories)}
+	id="categories"
+	isCollapsed={isCollapsed}
+	collapsedHeight={COLLAPSED_HEIGHT}
+	class={className}
+	style={style}
 >
-    <div id="categories-widget-data" class="hidden" data-archive-path={archivePath}></div>
-    {categories.map((c) =>
-        <ButtonLink
-            url={c.url}
-            badge={String(c.count)}
-            label={`View all posts in the ${c.name.trim()} category`}
-        >
-            {c.name.trim()}
-        </ButtonLink>
-    )}
+	<div id="categories-widget-data" class="hidden" data-archive-path={archivePath}></div>
+	<CategoryTree nodes={categoryTree} client:load />
 </WidgetLayout>
 
 <script>
+  function normalizeCategoryPath(category: string) {
+    return category
+      .split(/(?:\/|\\|->|→|＞|>)/g)
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .join("/");
+  }
+
+  function formatCategoryTitle(category: string) {
+    return normalizeCategoryPath(category).replaceAll("/", " / ");
+  }
+
+  function updateActiveCategoryTree() {
+    const params = new URLSearchParams(window.location.search);
+    const activeCategory = normalizeCategoryPath(params.get("category") || "");
+    window.dispatchEvent(new CustomEvent("category-tree:active-path", { detail: activeCategory }));
+    document.querySelectorAll<HTMLElement>(".category-tree-link").forEach((link) => {
+      const path = normalizeCategoryPath(link.dataset.categoryPath || "");
+      link.removeAttribute("data-active");
+      link.removeAttribute("data-ancestor");
+      if (!activeCategory || !path) return;
+      if (path === activeCategory) {
+        link.setAttribute("data-active", "");
+      } else if (activeCategory.startsWith(`${path}/`)) {
+        link.setAttribute("data-ancestor", "");
+      }
+    });
+  }
+
   function updateBannerTitleFromCategory() {
     const data = document.getElementById("categories-widget-data");
     if (!data) return;
@@ -65,12 +124,19 @@ const archivePath = url("/archive/");
     if (activeCategory) {
       const bannerTitle = document.querySelector(".banner-page-title-text");
       if (bannerTitle) {
-        bannerTitle.textContent = decodeURIComponent(activeCategory);
+        bannerTitle.textContent = formatCategoryTitle(decodeURIComponent(activeCategory));
       }
     }
   }
 
+  updateActiveCategoryTree();
   updateBannerTitleFromCategory();
-  document.addEventListener("astro:page-load", updateBannerTitleFromCategory);
-  document.addEventListener("swup:contentReplaced", updateBannerTitleFromCategory);
+  document.addEventListener("astro:page-load", () => {
+    updateActiveCategoryTree();
+    updateBannerTitleFromCategory();
+  });
+  document.addEventListener("swup:contentReplaced", () => {
+    updateActiveCategoryTree();
+    updateBannerTitleFromCategory();
+  });
 </script>

@@ -1,6 +1,11 @@
 import { type CollectionEntry, getCollection } from "astro:content";
 import I18nKey from "@i18n/i18nKey";
 import { i18n } from "@i18n/translation";
+import {
+	getCategoryPathFromSegments,
+	getCategorySegments,
+	normalizeCategoryPath,
+} from "@utils/category-utils";
 import { getCategoryUrl } from "@utils/url-utils";
 
 // // Retrieve posts and sort them by publication date
@@ -81,6 +86,10 @@ export type Category = {
 	name: string;
 	count: number;
 	url: string;
+	depth: number;
+	leafName: string;
+	parent?: string;
+	hasChildren: boolean;
 };
 
 export async function getCategoryList(): Promise<Category[]> {
@@ -88,33 +97,59 @@ export async function getCategoryList(): Promise<Category[]> {
 		return import.meta.env.PROD ? data.draft !== true : true;
 	});
 	const count: { [key: string]: number } = {};
+	const directCount: { [key: string]: number } = {};
+	const childrenMap: { [key: string]: Set<string> } = {};
 	allBlogPosts.forEach((post: { data: { category: string | null } }) => {
-		if (!post.data.category) {
+		const segments = getCategorySegments(post.data.category);
+		if (segments.length === 0) {
 			const ucKey = i18n(I18nKey.uncategorized);
 			count[ucKey] = count[ucKey] ? count[ucKey] + 1 : 1;
+			directCount[ucKey] = directCount[ucKey] ? directCount[ucKey] + 1 : 1;
 			return;
 		}
 
-		const categoryName =
-			typeof post.data.category === "string"
-				? post.data.category.trim()
-				: String(post.data.category).trim();
+		const fullPath = getCategoryPathFromSegments(segments);
+		directCount[fullPath] = directCount[fullPath] ? directCount[fullPath] + 1 : 1;
 
-		count[categoryName] = count[categoryName] ? count[categoryName] + 1 : 1;
+		for (let i = 0; i < segments.length; i++) {
+			const path = getCategoryPathFromSegments(segments.slice(0, i + 1));
+			count[path] = count[path] ? count[path] + 1 : 1;
+
+			if (i > 0) {
+				const parent = getCategoryPathFromSegments(segments.slice(0, i));
+				if (!childrenMap[parent]) childrenMap[parent] = new Set();
+				childrenMap[parent].add(path);
+			}
+		}
 	});
 
 	const lst = Object.keys(count).sort((a, b) => {
-		return (
-			count[b] - count[a] || a.toLowerCase().localeCompare(b.toLowerCase())
-		);
+		const aSegments = getCategorySegments(a);
+		const bSegments = getCategorySegments(b);
+		for (let i = 0; i < Math.min(aSegments.length, bSegments.length); i++) {
+			const segmentCompare = aSegments[i]
+				.toLowerCase()
+				.localeCompare(bSegments[i].toLowerCase());
+			if (segmentCompare !== 0) return segmentCompare;
+		}
+		return aSegments.length - bSegments.length || count[b] - count[a];
 	});
 
 	const ret: Category[] = [];
 	for (const c of lst) {
+		const segments = getCategorySegments(c);
+		const parent =
+			segments.length > 1
+				? getCategoryPathFromSegments(segments.slice(0, -1))
+				: undefined;
 		ret.push({
 			name: c,
 			count: count[c],
 			url: getCategoryUrl(c),
+			depth: Math.max(0, segments.length - 1),
+			leafName: segments.at(-1) || c,
+			parent,
+			hasChildren: !!childrenMap[c]?.size,
 		});
 	}
 	return ret;
@@ -171,7 +206,7 @@ export async function getRelatedPosts(
 
 	const currentTags = new Set(currentPost.data.tags || []);
 	const currentTokens = tokenizeTitle(currentPost.data.title);
-	const currentCategory = currentPost.data.category || "";
+	const currentCategory = normalizeCategoryPath(currentPost.data.category);
 	const now = Date.now();
 
 	const scored = candidates.map((post) => {
@@ -192,7 +227,7 @@ export async function getRelatedPosts(
 			30 * Math.exp((-Math.LN2 * daysSincePublished) / 180);
 
 		// categoryBonus (0 or 10)
-		const postCategory = post.data.category || "";
+		const postCategory = normalizeCategoryPath(post.data.category);
 		const categoryBonus =
 			currentCategory && postCategory && currentCategory === postCategory
 				? 10
