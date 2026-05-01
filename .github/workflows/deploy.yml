@@ -1,4 +1,4 @@
-name: Deploy to wonder-ai.info
+name: Build
 
 on:
   push:
@@ -6,20 +6,14 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: build-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
-env:
-  SERVER_HOST: wonder-ai.info
-  SERVER_PORT: "22"
-  SERVER_USER: deploy
-  SERVER_PATH: /var/www/firefly
-
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,23 +35,3 @@ jobs:
 
       - name: Build site
         run: pnpm build
-
-      - name: Configure SSH
-        env:
-          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
-        run: |
-          if [ -z "${SERVER_SSH_KEY}" ]; then
-            echo "Missing GitHub secret: SERVER_SSH_KEY"
-            exit 1
-          fi
-
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "${SERVER_SSH_KEY}" > ~/.ssh/wonder-ai-deploy
-          chmod 600 ~/.ssh/wonder-ai-deploy
-          ssh-keyscan -p "${SERVER_PORT}" -H "${SERVER_HOST}" >> ~/.ssh/known_hosts
-
-      - name: Publish static files
-        run: |
-          rsync -az --delete \
-            -e "ssh -p ${SERVER_PORT} -i ~/.ssh/wonder-ai-deploy -o IdentitiesOnly=yes" \
-            dist/ "${SERVER_USER}@${SERVER_HOST}:${SERVER_PATH}/"
