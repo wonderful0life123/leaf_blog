@@ -103,6 +103,7 @@ const managerConfigStr = JSON.stringify({
     // ── State ────────────────────────────────────────────────
     var state = {
         playlist: [],
+        defaultPlaylist: [],
         currentIndex: 0,
         isPlaying: false,
         playMode: 0, // 0: list, 1: one, 2: random
@@ -114,6 +115,8 @@ const managerConfigStr = JSON.stringify({
         currentLrcIndex: -1,
         initialized: false,
         initializing: false,
+        isSearching: false,
+        searchQuery: '',
         error: null
     };
 
@@ -127,11 +130,35 @@ const managerConfigStr = JSON.stringify({
         window.dispatchEvent(new CustomEvent(name, { detail: detail || {} }));
     }
 
+    function normalizeTrack(item) {
+        return {
+            name: item.title || item.name || 'Unknown',
+            artist: item.author || item.artist || 'Unknown',
+            url: item.url,
+            pic: item.pic || item.cover || '',
+            lrc: item.lrc
+        };
+    }
+
+    function normalizeSearchSong(song) {
+        var artists = song.ar || song.artists || [];
+        var album = song.al || song.album || {};
+        return {
+            id: song.id,
+            name: song.name || 'Unknown',
+            artist: artists.map(function (artist) { return artist.name; }).filter(Boolean).join(' / ') || 'Unknown',
+            pic: album.picUrl || '',
+            lrc: ''
+        };
+    }
+
     // ── Meting fetch ─────────────────────────────────────────
-    async function fetchMetingData() {
+    async function fetchMetingData(options) {
         if (!config.meting) return;
         var m = config.meting;
         var apis = [m.api].concat(m.fallbackApis || []);
+        var requestType = options && options.type ? options.type : m.type;
+        var requestId = options && options.id ? options.id : m.id;
 
         for (var i = 0; i < apis.length; i++) {
             var baseApi = apis[i];
@@ -139,8 +166,8 @@ const managerConfigStr = JSON.stringify({
             try {
                 var fetchUrl = baseApi
                     .replace(':server', m.server)
-                    .replace(':type', m.type)
-                    .replace(':id', m.id)
+                    .replace(':type', requestType)
+                    .replace(':id', encodeURIComponent(requestId))
                     .replace(':r', Math.random());
                 if (m.auth) fetchUrl += '&auth=' + m.auth;
 
@@ -149,16 +176,7 @@ const managerConfigStr = JSON.stringify({
                 var data = await res.json();
 
                 if (Array.isArray(data) && data.length > 0) {
-                    state.playlist = data.map(function (item) {
-                        return {
-                            name: item.title || item.name || 'Unknown',
-                            artist: item.author || item.artist || 'Unknown',
-                            url: item.url,
-                            pic: item.pic || item.cover || '',
-                            lrc: item.lrc
-                        };
-                    });
-                    return;
+                    return data.map(normalizeTrack);
                 }
             } catch (e) {
                 console.warn('Meting API failed for ' + baseApi, e);
@@ -219,6 +237,7 @@ const managerConfigStr = JSON.stringify({
                 console.warn('Autoplay blocked:', e);
             });
         } else {
+            audio.pause();
             state.isPlaying = false;
             emit('fm:play-state', { isPlaying: false });
         }
@@ -306,6 +325,104 @@ const managerConfigStr = JSON.stringify({
         }
     }
 
+    async function searchMeting(query) {
+        query = (query || '').trim();
+        if (!query || config.mode !== 'meting' || !config.meting) return;
+
+        state.isSearching = true;
+        emit('fm:search-state', { status: 'loading', query: query });
+
+        try {
+            var searchRes = await fetch('/api/netease-search?keywords=' + encodeURIComponent(query));
+            if (!searchRes.ok) throw new Error('Search HTTP ' + searchRes.status);
+            var searchData = await searchRes.json();
+            var songs = (searchData.result && searchData.result.songs) || [];
+            var candidates = songs.slice(0, 12).map(normalizeSearchSong);
+            var results = [];
+
+            for (var i = 0; i < candidates.length; i++) {
+                try {
+                    var trackList = await fetchMetingData({ type: 'song', id: String(candidates[i].id) });
+                    if (trackList && trackList.length > 0 && trackList[0].url) {
+                        results.push(trackList[0]);
+                    } else {
+                        results.push({
+                            name: candidates[i].name,
+                            artist: candidates[i].artist,
+                            url: config.meting.api
+                                .replace(':server', config.meting.server)
+                                .replace(':type', 'url')
+                                .replace(':id', String(candidates[i].id))
+                                .replace(':r', Math.random()),
+                            pic: candidates[i].pic,
+                            lrc: ''
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Meting song lookup failed:', candidates[i].id, e);
+                }
+            }
+
+            state.isSearching = false;
+            state.searchQuery = query;
+            state.playlist = results || [];
+            state.currentIndex = 0;
+            state.error = null;
+
+            audio.pause();
+            state.isPlaying = false;
+            emit('fm:play-state', { isPlaying: false });
+            emit('fm:init', {
+                playlist: state.playlist,
+                playMode: state.playMode,
+                volume: state.volume,
+                isMuted: state.isMuted
+            });
+
+            if (state.playlist.length > 0) {
+                loadTrack(0, false);
+                emit('fm:search-state', {
+                    status: 'done',
+                    query: query,
+                    count: state.playlist.length
+                });
+            } else {
+                emit('fm:error', { message: config.i18n.noSongs });
+                emit('fm:search-state', { status: 'empty', query: query, count: 0 });
+            }
+        } catch (e) {
+            console.warn('Music search failed:', e);
+            state.isSearching = false;
+            emit('fm:search-state', { status: 'error', query: query });
+            emit('fm:error', { message: config.i18n.error });
+        }
+    }
+
+    function resetPlaylist() {
+        if (!state.defaultPlaylist || state.defaultPlaylist.length === 0) return;
+
+        state.searchQuery = '';
+        state.playlist = state.defaultPlaylist.slice();
+        state.currentIndex = 0;
+        state.error = null;
+
+        audio.pause();
+        state.isPlaying = false;
+        emit('fm:play-state', { isPlaying: false });
+        emit('fm:init', {
+            playlist: state.playlist,
+            playMode: state.playMode,
+            volume: state.volume,
+            isMuted: state.isMuted
+        });
+        loadTrack(0, false);
+        emit('fm:search-state', {
+            status: 'idle',
+            query: '',
+            count: state.playlist.length
+        });
+    }
+
     // ── Audio events → broadcast ─────────────────────────────
     audio.addEventListener('timeupdate', function () {
         if (isNaN(audio.duration)) return;
@@ -351,9 +468,11 @@ const managerConfigStr = JSON.stringify({
 
         try {
             if (config.mode === 'meting' && config.meting) {
-                await fetchMetingData();
+                state.playlist = await fetchMetingData();
+                state.defaultPlaylist = state.playlist.slice();
             } else if (config.mode === 'local') {
                 state.playlist = config.localPlaylist || [];
+                state.defaultPlaylist = state.playlist.slice();
             }
 
             if (state.playlist.length > 0) {
@@ -421,6 +540,8 @@ const managerConfigStr = JSON.stringify({
                 lyrics: state.lyrics,
                 currentLrcIndex: state.currentLrcIndex,
                 initialized: state.initialized,
+                isSearching: state.isSearching,
+                searchQuery: state.searchQuery,
                 error: state.error,
                 config: config
             };
@@ -434,7 +555,9 @@ const managerConfigStr = JSON.stringify({
         seek: seek,
         seekToTime: seekToTime,
         playTrackByIndex: playTrackByIndex,
-        loadTrack: loadTrack
+        loadTrack: loadTrack,
+        search: searchMeting,
+        resetPlaylist: resetPlaylist
     };
 })();
 </script>

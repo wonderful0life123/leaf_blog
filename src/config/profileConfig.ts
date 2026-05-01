@@ -22,15 +22,21 @@ export const profileConfig: ProfileConfig = {
 	// showName: true 时显示图标和名称，false 时只显示图标
 	links: [
 		{
-			name: "qq",
+			name: "QQ",
 			icon: "fa7-brands:qq",
-			url: "https://qm.qq.com/q/ZGsFa8qX2G",
+			url: "https://wpa.qq.com/msgrd?v=3&uin=2951386895&site=qq&menu=yes",
 			showName: false,
 		},
 		{
 			name: "GitHub",
 			icon: "fa7-brands:github",
-			url: "https://github.com/CuteLeaf",
+			url: "https://github.com/wonderful0life123",
+			showName: false,
+		},
+		{
+			name: "知乎",
+			icon: "simple-icons:zhihu",
+			url: "https://www.zhihu.com/people/ttha-52",
 			showName: false,
 		},
 		{

@@ -1,47 +1,63 @@
-name: Deploy to Pages Branch
+name: Deploy to wonder-ai.info
 
 on:
-  # 每次推送到 `master` 分支时触发这个"工作流程"
-  # 如果你使用了别的分支名，请按需将 `master` 替换成你的分支名
   push:
-    branches: [ master ]
-  # 允许你在 GitHub 上的 Actions 标签中手动触发此"工作流程"
+    branches: [master]
   workflow_dispatch:
 
-# 需要写入权限来推送到pages分支
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
-  contents: write
+  contents: read
+
+env:
+  SERVER_HOST: wonder-ai.info
+  SERVER_PORT: "22"
+  SERVER_USER: deploy
+  SERVER_PATH: /var/www/firefly
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout your repository using git
+      - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          
+          node-version: "22"
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9.14.4
           run_install: false
-          
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-      
-      - name: Build site
-        run: pnpm run build
 
-      - name: Create .nojekyll file
-        run: touch dist/.nojekyll
-      
-      - name: Deploy to pages branch
-        uses: JamesIves/github-pages-deploy-action@v4
-        with:
-          branch: pages # 部署到pages分支
-          folder: dist # Astro默认构建输出目录
-          clean: true # 清理目标分支中的旧文件
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build site
+        run: pnpm build
+
+      - name: Configure SSH
+        env:
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          if [ -z "${SERVER_SSH_KEY}" ]; then
+            echo "Missing GitHub secret: SERVER_SSH_KEY"
+            exit 1
+          fi
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${SERVER_SSH_KEY}" > ~/.ssh/wonder-ai-deploy
+          chmod 600 ~/.ssh/wonder-ai-deploy
+          ssh-keyscan -p "${SERVER_PORT}" -H "${SERVER_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Publish static files
+        run: |
+          rsync -az --delete \
+            -e "ssh -p ${SERVER_PORT} -i ~/.ssh/wonder-ai-deploy -o IdentitiesOnly=yes" \
+            dist/ "${SERVER_USER}@${SERVER_HOST}:${SERVER_PATH}/"

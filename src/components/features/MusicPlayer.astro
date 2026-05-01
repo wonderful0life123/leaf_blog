@@ -147,6 +147,21 @@ const widgetId =
     <div class="overflow-hidden min-h-0">
             <div class="mt-2 pt-2 border-t border-neutral-100 dark:border-white/5 mx-1">
             <div class="playlist-container max-h-48 overflow-y-auto custom-scrollbar pr-1 pb-1 flex flex-col gap-1" role="listbox" aria-label={i18n(I18nKey.musicPlaylist)}>
+                <div class="music-search sticky top-0 z-10 flex items-center gap-1 bg-white/95 dark:bg-[#1e1e1e]/95 pb-2">
+                    <input
+                        class="music-search-input min-w-0 flex-1 rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-2 py-1.5 text-xs outline-none focus:border-(--primary)"
+                        type="search"
+                        placeholder="搜索网易云音乐"
+                        aria-label="搜索网易云音乐"
+                    />
+                    <button class="btn-search shrink-0 rounded-md bg-(--btn-regular-bg) hover:bg-(--btn-regular-bg-hover) px-2 py-1.5 text-xs text-neutral-700 dark:text-neutral-200" type="button">
+                        搜索
+                    </button>
+                    <button class="btn-search-reset shrink-0 rounded-md bg-(--btn-regular-bg) hover:bg-(--btn-regular-bg-hover) px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-300" type="button">
+                        歌单
+                    </button>
+                </div>
+                <div class="music-search-status hidden px-1 pb-1 text-[11px] text-neutral-400"></div>
                 <!-- Items -->
             </div>
         </div>
@@ -220,6 +235,10 @@ const widgetId =
         btnDrawer: widget.querySelector('.btn-drawer-toggle'),
         playlistDrawer: widget.querySelector('.playlist-drawer'),
         playlistContainer: widget.querySelector('.playlist-container'),
+        searchInput: widget.querySelector('.music-search-input'),
+        btnSearch: widget.querySelector('.btn-search'),
+        btnSearchReset: widget.querySelector('.btn-search-reset'),
+        searchStatus: widget.querySelector('.music-search-status'),
         itemTemplate: document.getElementById('playlist-item-template-' + widgetId)
     };
 
@@ -227,7 +246,8 @@ const widgetId =
     var _critical = [ui.btnPlay, ui.btnRepeat, ui.btnMute, ui.volContainer,
         ui.btnDrawer, ui.btnLrc, ui.lrcDrawer, ui.lrcContainer,
         ui.progressContainer, ui.btnNext, ui.btnPrev, ui.loading,
-        ui.cover, ui.title, ui.artist, ui.playlistContainer, ui.itemTemplate];
+        ui.cover, ui.title, ui.artist, ui.playlistContainer, ui.itemTemplate,
+        ui.searchInput, ui.btnSearch, ui.btnSearchReset, ui.searchStatus];
     if (_critical.some(function(el) { return !el; })) return;
 
     // ── Local state (drawers, user scrolling) ────────────────
@@ -331,7 +351,9 @@ const widgetId =
     }
 
     function renderPlaylist(playlist, currentIndex) {
-        ui.playlistContainer.innerHTML = '';
+        ui.playlistContainer.querySelectorAll('.playlist-item').forEach(function (item) {
+            item.remove();
+        });
         playlist.forEach(function (track, idx) {
             var clone = ui.itemTemplate.content.cloneNode(true);
             var itemEl = clone.querySelector('.playlist-item');
@@ -353,6 +375,11 @@ const widgetId =
             ui.playlistContainer.appendChild(clone);
         });
         updatePlaylistActiveUI(currentIndex);
+    }
+
+    function updateSearchStatus(text, visible) {
+        ui.searchStatus.innerText = text || '';
+        ui.searchStatus.classList.toggle('hidden', !visible);
     }
 
     function updatePlaylistActiveUI(currentIndex) {
@@ -533,12 +560,44 @@ const widgetId =
         ui.title.innerText = e.detail.message || cfg.i18n.error;
     });
 
+    on('fm:search-state', function (e) {
+        var d = e.detail || {};
+        ui.btnSearch.disabled = d.status === 'loading';
+        ui.btnSearch.classList.toggle('opacity-60', d.status === 'loading');
+        if (d.status === 'loading') {
+            updateSearchStatus('正在搜索 "' + d.query + '"...', true);
+        } else if (d.status === 'done') {
+            updateSearchStatus('搜索结果：' + (d.count || 0) + ' 首', true);
+        } else if (d.status === 'empty') {
+            updateSearchStatus('没有找到相关歌曲', true);
+        } else if (d.status === 'error') {
+            updateSearchStatus('搜索失败，请稍后重试', true);
+        } else {
+            updateSearchStatus('', false);
+        }
+    });
+
     // ── Button click delegates ───────────────────────────────
     ui.btnPlay.addEventListener('click', function () { mgr.togglePlay(); });
     ui.btnNext.addEventListener('click', function () { mgr.playNext(); });
     ui.btnPrev.addEventListener('click', function () { mgr.playPrev(); });
     ui.btnRepeat.addEventListener('click', function () { mgr.cyclePlayMode(); });
     ui.btnMute.addEventListener('click', function () { mgr.toggleMute(); });
+
+    function runSearch() {
+        var query = ui.searchInput.value.trim();
+        if (!query) return;
+        mgr.search(query);
+    }
+
+    ui.btnSearch.addEventListener('click', runSearch);
+    ui.searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') runSearch();
+    });
+    ui.btnSearchReset.addEventListener('click', function () {
+        ui.searchInput.value = '';
+        mgr.resetPlaylist();
+    });
 
     ui.volContainer.addEventListener('click', function (e) {
         var rect = ui.volContainer.getBoundingClientRect();
