@@ -169,7 +169,9 @@ const mobileNonHomeBannerClass = !isHomePageCheck ? "mobile-hide-banner" : "";
 // 计算主内容区域位置，考虑手机端非首页时banner被隐藏
 const mainPanelTop =
 	isBannerMode && isBackgroundEnabled
-		? `calc(${BANNER_HEIGHT}vh - ${MAIN_PANEL_OVERLAPS_BANNER_HEIGHT}rem)`
+		? MAIN_PANEL_OVERLAPS_BANNER_HEIGHT >= 0
+			? `calc(${BANNER_HEIGHT}vh - ${MAIN_PANEL_OVERLAPS_BANNER_HEIGHT}rem)`
+			: `calc(${BANNER_HEIGHT}vh + ${Math.abs(MAIN_PANEL_OVERLAPS_BANNER_HEIGHT)}rem)`
 		: "5.5rem";
 
 // 当banner模式被禁用时，主内容区域应该始终从顶栏下面开始
@@ -960,4 +962,3 @@ const bannerCarouselInterval = Math.max(
   }
 
 </style>
-

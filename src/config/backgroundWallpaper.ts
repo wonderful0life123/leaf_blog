@@ -37,16 +37,16 @@ export const backgroundWallpaper: BackgroundWallpaperConfig = {
 	 */
 	src: {
 		// 桌面背景图片（支持单张或多张随机）
-		desktop: "assets/images/FanrenWallpaper/moyubuluo-92732-hanli.jpg",
+		desktop: "assets/images/FanrenWallpaper/hanli-jieying-qianye-4k.jpg",
 		// 移动背景图片（支持单张或多张随机）
-		mobile: "assets/images/FanrenWallpaper/moyubuluo-92732-hanli.jpg",
+		mobile: "assets/images/FanrenWallpaper/hanli-jieying-qianye-4k.jpg",
 	},
 	// Banner模式特有配置
 	banner: {
 		// 图片位置
 		// 支持所有CSS object-position值，如: 'top', 'center', 'bottom', 'left top', 'right bottom', '25% 75%', '10px 20px'..
 		// 如果不知道怎么配置百分百之类的配置，推荐直接使用：'center'居中，'top'顶部居中，'bottom'底部居中，'left'左侧居中，'right'右侧居中
-		position: "center",
+		position: "right 18%",
 
 		// 主页横幅文字
 		homeText: {
@@ -90,15 +90,15 @@ export const backgroundWallpaper: BackgroundWallpaperConfig = {
 			},
 			text: {
 				// 桌面端要显示的来源文本
-				desktop: "moyubuluo - 凡人修仙传韩立",
+				desktop: "千叶网 - 凡人修仙传韩立结婴4K",
 				// 移动端要显示的来源文本
-				mobile: "moyubuluo - 凡人修仙传韩立",
+				mobile: "千叶网 - 凡人修仙传韩立结婴4K",
 			},
 			url: {
 				// 桌面端原始艺术品或艺术家页面的 URL 链接
-				desktop: "https://www.moyubuluo.com/hdwallpapers/92732.html",
+				desktop: "",
 				// 移动端原始艺术品或艺术家页面的 URL 链接
-				mobile: "https://www.moyubuluo.com/hdwallpapers/92732.html",
+				mobile: "",
 			},
 		},
 		// 横幅导航栏配置
