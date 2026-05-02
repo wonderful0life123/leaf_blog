@@ -9,21 +9,33 @@ interface Props {
 	headings: MarkdownHeading[];
 	class?: string;
 	style?: string;
+	widgetId?: string;
+	contentId?: string;
+	indicatorId?: string;
 }
 
-const { headings: _headings = [], class: className, style } = Astro.props;
+const {
+	headings: _headings = [],
+	class: className,
+	style,
+	widgetId = "sidebar-toc",
+	contentId = "sidebar-toc-content",
+	indicatorId = "sidebar-active-indicator",
+} = Astro.props;
 ---
 
 <WidgetLayout 
   name={i18n(I18nKey.tableOfContents)} 
-  id="sidebar-toc"
+  id={widgetId}
   class={className}
   style={style}
 >
   <div class="toc-scroll-container custom-scrollbar">
     <div
       class="toc-content"
-      id="sidebar-toc-content"
+      id={contentId}
+      data-sidebar-toc-content
+      data-indicator-id={indicatorId}
     >
       <!-- TOC内容将由JavaScript动态生成 -->
     </div>
@@ -41,34 +53,45 @@ const { headings: _headings = [], class: className, style } = Astro.props;
 
   if (typeof window.SidebarTOC === "undefined") {
     window.SidebarTOC = {
-      manager: null
+      manager: null,
+      managers: {}
     };
   }
 
   async function initSidebarTOC() {
-    const tocContent = document.getElementById("sidebar-toc-content");
-    if (!tocContent) return;
+    const tocContents = document.querySelectorAll<HTMLElement>("[data-sidebar-toc-content]");
+    if (!tocContents.length) return;
 
+    const managers = window.SidebarTOC.managers || {};
+    window.SidebarTOC.managers = managers;
 
-    try {
-      // 清理旧实例
-      if (window.SidebarTOC.manager) {
-        window.SidebarTOC.manager.cleanup();
+    tocContents.forEach((tocContent) => {
+      const contentId = tocContent.id;
+      const indicatorId = tocContent.dataset.indicatorId || `${contentId}-active-indicator`;
+      if (!contentId) return;
+
+      try {
+        // 清理旧实例
+        if (managers[contentId]) {
+          managers[contentId].cleanup();
+        }
+
+        // 创建新实例
+        const manager = new TOCManager({
+          contentId,
+          indicatorId,
+          maxLevel: 3,
+          scrollOffset: 80,
+        });
+        window.SidebarTOC.manager = manager;
+        managers[contentId] = manager;
+
+        // 初始化
+        manager.init();
+      } catch (error) {
+        console.error("Failed to load TOCManager for SidebarTOC:", error);
       }
-
-      // 创建新实例
-      window.SidebarTOC.manager = new TOCManager({
-        contentId: "sidebar-toc-content",
-        indicatorId: "sidebar-active-indicator",
-        maxLevel: 3,
-        scrollOffset: 80,
-      });
-
-      // 初始化
-      window.SidebarTOC.manager.init();
-    } catch (error) {
-      console.error("Failed to load TOCManager for SidebarTOC:", error);
-    }
+    });
   }
 
   // 初始化

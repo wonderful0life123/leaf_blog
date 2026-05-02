@@ -240,6 +240,11 @@ const sidebarPosition = sidebarLayoutConfig.position;
     const wrapper = document.querySelector('.floating-toc-wrapper');
     const sidebarPosition = wrapper?.getAttribute('data-sidebar-position') || 'left';
     const showBothSidebarsOnPost = wrapper?.getAttribute('data-show-both-sidebars-on-post') === 'true';
+    const isWidePostLayout = document.getElementById('main-grid')?.getAttribute('data-wide-post-layout') === 'true';
+
+    if (isWidePostLayout) {
+      return window.innerWidth < 768;
+    }
 
     // 双侧边栏模式（含文章页临时双侧栏）：小屏幕或侧边栏目录未启用时显示悬浮目录
     const effectiveIsBothSidebars = sidebarPosition === 'both' || showBothSidebarsOnPost;

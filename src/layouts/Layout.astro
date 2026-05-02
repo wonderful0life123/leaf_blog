@@ -621,10 +621,14 @@ const siteLang = lang.replace("_", "-");
     .enable-banner #right-sidebar-sticky {
       top: calc(1rem - var(--banner-height-extend)) !important;
     }
+    .enable-banner #article-toc-sidebar-sticky {
+      top: calc(4.5rem - var(--banner-height-extend)) !important;
+    }
 
     body.enable-banner.sticky-navbar #sidebar-sticky,
     body.enable-banner.sticky-navbar #left-sidebar-sticky,
-    body.enable-banner.sticky-navbar #right-sidebar-sticky {
+    body.enable-banner.sticky-navbar #right-sidebar-sticky,
+    body.enable-banner.sticky-navbar #article-toc-sidebar-sticky {
       top: calc(5.5rem - var(--banner-height-extend)) !important;
     }
 
@@ -655,12 +659,15 @@ const siteLang = lang.replace("_", "-");
     html[data-wallpaper-mode="none"] body.sticky-navbar #sidebar-sticky,
     html[data-wallpaper-mode="none"] body.sticky-navbar #left-sidebar-sticky,
     html[data-wallpaper-mode="none"] body.sticky-navbar #right-sidebar-sticky,
+    html[data-wallpaper-mode="none"] body.sticky-navbar #article-toc-sidebar-sticky,
     html[data-wallpaper-mode="overlay"] body.sticky-navbar #sidebar-sticky,
     html[data-wallpaper-mode="overlay"] body.sticky-navbar #left-sidebar-sticky,
     html[data-wallpaper-mode="overlay"] body.sticky-navbar #right-sidebar-sticky,
+    html[data-wallpaper-mode="overlay"] body.sticky-navbar #article-toc-sidebar-sticky,
     body.sticky-navbar.no-banner-layout #sidebar-sticky,
     body.sticky-navbar.no-banner-layout #left-sidebar-sticky,
-    body.sticky-navbar.no-banner-layout #right-sidebar-sticky {
+    body.sticky-navbar.no-banner-layout #right-sidebar-sticky,
+    body.sticky-navbar.no-banner-layout #article-toc-sidebar-sticky {
       top: 5.5rem !important;
     }
   }
@@ -679,16 +686,22 @@ const siteLang = lang.replace("_", "-");
     body.enable-banner:not(.lg\:is-home) #right-sidebar-sticky {
       top: 1rem !important;
     }
+    body.enable-banner:not(.lg\:is-home) #article-toc-sidebar-sticky {
+      top: 4.5rem !important;
+    }
 
     html[data-wallpaper-mode="none"] body.sticky-navbar #sidebar-sticky,
     html[data-wallpaper-mode="none"] body.sticky-navbar #left-sidebar-sticky,
     html[data-wallpaper-mode="none"] body.sticky-navbar #right-sidebar-sticky,
+    html[data-wallpaper-mode="none"] body.sticky-navbar #article-toc-sidebar-sticky,
     html[data-wallpaper-mode="overlay"] body.sticky-navbar #sidebar-sticky,
     html[data-wallpaper-mode="overlay"] body.sticky-navbar #left-sidebar-sticky,
     html[data-wallpaper-mode="overlay"] body.sticky-navbar #right-sidebar-sticky,
+    html[data-wallpaper-mode="overlay"] body.sticky-navbar #article-toc-sidebar-sticky,
     body.sticky-navbar.no-banner-layout #sidebar-sticky,
     body.sticky-navbar.no-banner-layout #left-sidebar-sticky,
-    body.sticky-navbar.no-banner-layout #right-sidebar-sticky {
+    body.sticky-navbar.no-banner-layout #right-sidebar-sticky,
+    body.sticky-navbar.no-banner-layout #article-toc-sidebar-sticky {
       top: 5.5rem !important;
     }
 
@@ -1316,12 +1329,20 @@ function disableAnimation() {
     const sidebarPosition = mainGrid.getAttribute("data-sidebar-position") || "left";
     const tabletSidebar = mainGrid.getAttribute("data-tablet-sidebar") || "left";
     const showBothSidebarsOnPostPage = mainGrid.getAttribute("data-show-both-sidebars-on-post") === "true";
+    const useWidePostLayout = isPostPage;
+    mainGrid.setAttribute("data-wide-post-layout", useWidePostLayout ? "true" : "false");
 
     const shouldBothSidebars = isPostPage && sidebarPosition !== "both" && showBothSidebarsOnPostPage;
 
     let newGridClasses: string;
 
-    if (sidebarPosition === "both" || shouldBothSidebars) {
+    if (useWidePostLayout) {
+      if (sidebarPosition === "right") {
+        newGridClasses = "grid-cols-1 md:grid-cols-[1fr_17.5rem]";
+      } else {
+        newGridClasses = "grid-cols-1 md:grid-cols-[17.5rem_1fr]";
+      }
+    } else if (sidebarPosition === "both" || shouldBothSidebars) {
       // 双侧栏（含文章页临时双侧栏）
       // 从right临时扩展为both时，平板端保持显示右侧栏
       const effectiveTabletSidebar = (shouldBothSidebars && sidebarPosition === "right") ? "right" : tabletSidebar;
@@ -1345,14 +1366,52 @@ function disableAnimation() {
 
     newGridClasses.split(" ").forEach(cls => cls && mainGrid.classList.add(cls));
 
+    const rightSidebar = document.getElementById("right-sidebar");
+    const swupContainer = document.getElementById("swup-container");
+    const footer = mainGrid.querySelector('.footer');
+    const leftSidebar = document.getElementById("left-sidebar");
+    const articleTocSidebar = document.getElementById("article-toc-sidebar");
+    const articleTocSticky = document.getElementById("article-toc-sidebar-sticky");
+
+    if (sidebarPosition === "both") {
+      if (useWidePostLayout) {
+        leftSidebar?.classList.remove("md:block", "xl:block");
+        leftSidebar?.classList.add("hidden");
+        articleTocSidebar?.classList.remove("md:hidden", "xl:hidden");
+        articleTocSidebar?.classList.add("md:block");
+        articleTocSticky?.classList.remove("hidden");
+        swupContainer?.classList.remove("xl:col-span-1", "xl:col-start-2", "xl:col-end-3");
+        swupContainer?.classList.add("md:col-start-2", "xl:col-span-1", "xl:col-start-2");
+        rightSidebar?.classList.remove("xl:block");
+        rightSidebar?.classList.add("hidden", "xl:hidden");
+        footer?.classList.remove("xl:col-start-1");
+        footer?.classList.add("xl:col-start-2", "xl:col-span-1");
+      } else {
+        leftSidebar?.classList.remove("md:hidden", "xl:hidden");
+        leftSidebar?.classList.add(tabletSidebar === "right" ? "xl:block" : "md:block");
+        articleTocSidebar?.classList.add("hidden");
+        articleTocSidebar?.classList.remove("md:block");
+        articleTocSticky?.classList.add("hidden");
+        swupContainer?.classList.remove("xl:col-span-1", "xl:col-start-2");
+        swupContainer?.classList.add("xl:col-span-1", "xl:col-start-2", "xl:col-end-3");
+        rightSidebar?.classList.remove("xl:hidden");
+        rightSidebar?.classList.add("hidden", "xl:block");
+        footer?.classList.remove("xl:col-start-1");
+        footer?.classList.add("xl:col-start-2", "xl:col-span-1");
+      }
+    }
+
     // position为right时，swup导航不会替换静态元素(右侧栏、主内容容器、页脚)的class
     // 需要在JS中手动更新这些元素的网格定位类，以匹配2列/3列布局的切换
     if (sidebarPosition === "right") {
-      const rightSidebar = document.getElementById("right-sidebar");
-      const swupContainer = document.getElementById("swup-container");
-      const footer = mainGrid.querySelector('.footer');
-
-      if (shouldBothSidebars) {
+      if (useWidePostLayout) {
+        rightSidebar?.classList.remove("xl:col-start-3");
+        swupContainer?.classList.remove("xl:col-start-2", "xl:col-end-3");
+        if (footer) {
+          footer.classList.add("md:col-start-1", "xl:col-start-1");
+          footer.classList.remove("xl:col-start-2");
+        }
+      } else if (shouldBothSidebars) {
         // 文章页临时双侧栏：右侧栏移到第3列，主内容移到第2列，页脚居中
         rightSidebar?.classList.add("xl:col-start-3");
         swupContainer?.classList.add("xl:col-start-2", "xl:col-end-3");

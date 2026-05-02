@@ -5,6 +5,7 @@ import SpineModel from "@components/features/SpineModel.astro";
 import Footer from "@components/layout/Footer.astro";
 import Navbar from "@components/layout/Navbar.astro";
 import SideBar from "@components/layout/SideBar.astro";
+import SidebarTOC from "@components/widget/SidebarTOC.astro";
 import type { MarkdownHeading } from "astro";
 import { Icon } from "astro-icon/components";
 import ImageWrapper from "@/components/common/ImageWrapper.astro";
@@ -221,24 +222,39 @@ const updatedGridConfig: ResponsiveSidebarConfig = {
 	tabletSidebar: effectiveTabletSidebar,
 };
 
-const { gridCols } = generateGridClasses(updatedGridConfig);
-const sidebarClass = generateSidebarClasses(updatedGridConfig);
+const articleWideGridConfig: ResponsiveSidebarConfig = isPostPage
+	? {
+			...updatedGridConfig,
+			isBothSidebars: false,
+			hasLeftComponents: true,
+			hasRightComponents: false,
+		}
+	: updatedGridConfig;
+
+const { gridCols } = generateGridClasses(articleWideGridConfig);
+const sidebarClass = isPostPage
+	? "mb-4 hidden md:col-span-1 md:max-w-70 md:row-start-1 md:row-end-3 md:col-start-1 onload-animation"
+	: generateSidebarClasses(updatedGridConfig);
+const articleTocSidebarClass =
+	"mb-4 hidden md:col-span-1 md:max-w-70 md:row-start-1 md:row-end-3 md:col-start-1 onload-animation";
 const rightSidebarClass =
-	effectiveIsBothSidebars || sidebarLayoutConfig.position === "right"
-		? generateRightSidebarClasses(updatedGridConfig)
+	isPostPage && sidebarLayoutConfig.position === "both"
+		? "mb-4 hidden onload-animation xl:row-start-1 xl:row-end-3 xl:col-span-1 xl:max-w-70 xl:col-start-3"
+		: effectiveIsBothSidebars || sidebarLayoutConfig.position === "right"
+			? generateRightSidebarClasses(updatedGridConfig)
 		: "";
-const mainContentClass = generateMainContentClasses(updatedGridConfig);
+const mainContentClass = generateMainContentClasses(articleWideGridConfig);
 const staticBarClass = mainContentClass.replace("transition-main", "").trim();
 
 const footerClass = ["footer", "col-span-1", "onload-animation"];
 
 if (
-	updatedGridConfig.isBothSidebars &&
-	updatedGridConfig.hasLeftComponents &&
-	updatedGridConfig.hasRightComponents
+	articleWideGridConfig.isBothSidebars &&
+	articleWideGridConfig.hasLeftComponents &&
+	articleWideGridConfig.hasRightComponents
 ) {
 	// 双侧栏：Footer 在平板与桌面都跟随内容列
-	if (updatedGridConfig.tabletSidebar === "right") {
+	if (articleWideGridConfig.tabletSidebar === "right") {
 		footerClass.push(
 			"md:col-start-1 md:col-span-1 xl:col-start-2 xl:col-span-1",
 		);
@@ -248,14 +264,14 @@ if (
 		);
 	}
 } else if (
-	updatedGridConfig.hasLeftComponents &&
-	!updatedGridConfig.hasRightComponents
+	articleWideGridConfig.hasLeftComponents &&
+	!articleWideGridConfig.hasRightComponents
 ) {
 	// 仅左侧栏：内容列在第2列
 	footerClass.push("md:col-start-2 md:col-span-1 xl:col-start-2 xl:col-span-1");
 } else if (
-	!updatedGridConfig.hasLeftComponents &&
-	updatedGridConfig.hasRightComponents
+	!articleWideGridConfig.hasLeftComponents &&
+	articleWideGridConfig.hasRightComponents
 ) {
 	// 仅右侧栏：内容列在第1列
 	footerClass.push("md:col-start-1 md:col-span-1 xl:col-start-1 xl:col-span-1");
@@ -812,6 +828,7 @@ const bannerCarouselInterval = Math.max(
           data-sidebar-position={sidebarLayoutConfig.position}
           data-tablet-sidebar={sidebarLayoutConfig.tabletSidebar ?? "left"}
           data-show-both-sidebars-on-post={sidebarLayoutConfig.showBothSidebarsOnPostPage ? "true" : "false"}
+          data-wide-post-layout={isPostPage ? "true" : "false"}
         >
             <!-- Background image credit - Desktop -->
             {hasBannerCredit && creditEnabledOnDesktop && <a 
@@ -870,6 +887,17 @@ const bannerCarouselInterval = Math.max(
                                 headings={headings}
                             />
                         )}
+                    </div>
+                    <div id="article-toc-sidebar" class:list={[articleTocSidebarClass, "flex flex-col w-full pt-0", isPostPage && "md:block"]}>
+                        <div id="article-toc-sidebar-sticky" class="flex flex-col w-full sticky top-[4.5rem]">
+                            <SidebarTOC
+                                headings={headings}
+                                class="onload-animation"
+                                widgetId="article-sidebar-toc"
+                                contentId="article-sidebar-toc-content"
+                                indicatorId="article-sidebar-active-indicator"
+                            />
+                        </div>
                     </div>
                     <div id="left-sidebar-dynamic" class="hidden transition-swup-fade"></div>
                 </>

@@ -14,6 +14,7 @@ declare global {
 	interface Window {
 		SidebarTOC: {
 			manager: ITOCManager | null;
+			managers?: Record<string, ITOCManager>;
 		};
 		FloatingTOC: {
 			btn: HTMLElement | null;
