@@ -17,6 +17,7 @@ export class TOCManager {
 	private tocItems: HTMLElement[] = [];
 	private observer: IntersectionObserver | null = null;
 	private minDepth = 10;
+	private hasItems = false;
 	private maxLevel: number;
 	private scrollTimeout: number | null = null;
 	private contentId: string;
@@ -133,11 +134,13 @@ export class TOCManager {
 		const filteredHeadings = this.filterHeadings(headings);
 
 		if (filteredHeadings.length === 0) {
+			this.hasItems = false;
 			return this.getEmptyStateHTML();
 		}
 
 		let tocHTML = "";
 		let heading1Count = 1;
+		this.hasItems = false;
 
 		filteredHeadings.forEach((heading) => {
 			const depth = Number.parseInt(heading.tagName.charAt(1), 10);
@@ -178,6 +181,7 @@ export class TOCManager {
 			}
 
 			const escapedHeadingText = this.escapeHtmlAttr(headingText);
+			this.hasItems = true;
 
 			tocHTML += `
         <a 
@@ -195,6 +199,10 @@ export class TOCManager {
       `;
 		});
 
+		if (!this.hasItems) {
+			return this.getEmptyStateHTML();
+		}
+
 		tocHTML += `<div id="${this.indicatorId}" style="opacity: 0;" class="toc-active-indicator"></div>`;
 
 		return tocHTML;
@@ -211,6 +219,20 @@ export class TOCManager {
 		this.tocItems = Array.from(
 			document.querySelectorAll(`#${this.contentId} a`),
 		);
+		this.updateContainerVisibility();
+	}
+
+	private updateContainerVisibility(): void {
+		const tocContent = document.getElementById(this.contentId);
+		const widget = tocContent?.closest("widget-layout");
+		const floatingWrapper = tocContent?.closest("#floating-toc-wrapper");
+
+		if (widget) {
+			widget.classList.toggle("hidden", !this.hasItems);
+		}
+		if (floatingWrapper) {
+			floatingWrapper.classList.toggle("toc-empty", !this.hasItems);
+		}
 	}
 
 	/**

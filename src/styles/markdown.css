@@ -2,6 +2,8 @@
 
 .custom-md {
   overflow-wrap: break-word;
+  font-size: 1rem;
+  line-height: 1.86;
 
   body.sticky-navbar & {
     [id] {
@@ -19,6 +21,9 @@
   h4,
   h5,
   h6 {
+    scroll-margin-top: 6rem;
+    letter-spacing: 0;
+
     .anchor {
       @apply transition! -m-0.5! ml-[0.2ch]! p-0.5! select-none! opacity-0! no-underline!;
 
@@ -32,6 +37,28 @@
         @apply opacity-100!;
       }
     }
+  }
+
+  h2 {
+    margin-top: 2.25em;
+    margin-bottom: 0.85em;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px dashed var(--line-divider);
+  }
+
+  h3 {
+    margin-top: 1.8em;
+    margin-bottom: 0.7em;
+  }
+
+  p,
+  li {
+    line-height: 1.86;
+  }
+
+  p {
+    margin-top: 1.05em;
+    margin-bottom: 1.05em;
   }
 
   a:not(.no-styling) {
@@ -213,4 +240,3 @@ body.wallpaper-transparent .custom-md {
     background-color: color-mix(in oklch, var(--btn-plain-bg-active) 68%, transparent);
   }
 }
-

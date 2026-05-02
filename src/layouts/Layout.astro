@@ -24,6 +24,12 @@ import {
 import { defaultFavicons } from "@/constants/icon";
 import type { Favicon } from "@/types/config";
 import { getDefaultBackground, isHomePage } from "@/utils/layout-utils";
+import {
+	createWebsiteJsonLd,
+	getCanonicalUrl,
+	getDefaultOgImageUrl,
+	getPageKeywords,
+} from "@/utils/seo-utils";
 import { url } from "@/utils/url-utils";
 
 import "@/styles/main.css";
@@ -35,12 +41,13 @@ interface Props {
 	title?: string;
 	banner?: string;
 	description?: string;
+	keywords?: string[];
 	lang?: string;
 	setOGTypeArticle?: boolean;
 	postSlug?: string;
 }
 
-let { title, banner, description, lang, setOGTypeArticle, postSlug } =
+let { title, banner, description, keywords, lang, setOGTypeArticle, postSlug } =
 	Astro.props;
 
 // apply a class to the body element to decide the height of the banner, only used for initial page load
@@ -81,6 +88,12 @@ let ogImageUrl: string | undefined;
 if (siteConfig.generateOgImages && postSlug) {
 	ogImageUrl = new URL(`/og/${postSlug}.png`, Astro.site).toString();
 }
+ogImageUrl = ogImageUrl || getDefaultOgImageUrl();
+
+const canonicalUrl = getCanonicalUrl(Astro.url.pathname);
+const metaDescription = description || siteConfig.description || pageTitle;
+const pageKeywords = getPageKeywords(keywords);
+const siteJsonLd = createWebsiteJsonLd();
 
 const favicons: Favicon[] =
 	siteConfig.favicon.length > 0 ? siteConfig.favicon : defaultFavicons;
@@ -125,25 +138,35 @@ const siteLang = lang.replace("_", "-");
     )}
 
     <title>{pageTitle}</title>
+    <link rel="canonical" href={canonicalUrl} />
     <meta
       name="description"
-      content={description || siteConfig.description || pageTitle}
+      content={metaDescription}
     />
     {
-      siteConfig.keywords && siteConfig.keywords.length > 0 && (
-        <meta name="keywords" content={siteConfig.keywords.join(", ")} />
+      pageKeywords.length > 0 && (
+        <meta name="keywords" content={pageKeywords.join(", ")} />
       )
     }
     <meta name="author" content={profileConfig.name} />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="theme-color" content={`hsl(${siteConfig.themeColor.hue}, 90%, 65%)`} />
 
     <meta property="og:site_name" content={siteConfig.title} />
-    <meta property="og:url" content={Astro.url} />
+    <meta property="og:url" content={canonicalUrl} />
     <meta property="og:title" content={pageTitle} />
     <meta
       property="og:description"
-      content={description || siteConfig.description || pageTitle}
+      content={metaDescription}
     />
-    {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
+    <meta property="og:locale" content={siteLang.replace("-", "_")} />
+    {ogImageUrl && (
+      <>
+        <meta property="og:image" content={ogImageUrl} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+      </>
+    )}
     {
       setOGTypeArticle ? (
         <meta property="og:type" content="article" />
@@ -153,12 +176,21 @@ const siteLang = lang.replace("_", "-");
     }
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta property="twitter:url" content={Astro.url} />
+    <meta property="twitter:url" content={canonicalUrl} />
     <meta name="twitter:title" content={pageTitle} />
     <meta
       name="twitter:description"
-      content={description || siteConfig.description || pageTitle}
+      content={metaDescription}
     />
+    {ogImageUrl && <meta name="twitter:image" content={ogImageUrl} />}
+
+    {!setOGTypeArticle && (
+      <script
+        is:inline
+        type="application/ld+json"
+        set:html={JSON.stringify(siteJsonLd)}
+      />
+    )}
 
     <meta name="viewport" content="width=device-width" />
     <meta name="generator" content={Astro.generator} />
