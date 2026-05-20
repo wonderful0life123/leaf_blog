@@ -11,6 +11,7 @@ published: 2026-05-01
 
 - GitHub: [wonderful0life123](https://github.com/wonderful0life123)
 - 知乎: [ttha-52](https://www.zhihu.com/people/ttha-52)
+- 哔哩哔哩: [封侯海波平](https://space.bilibili.com/385777101)
 - QQ: 2951386895
 
 本站基于 Astro 静态博客框架搭建，主题署名保留在页脚。

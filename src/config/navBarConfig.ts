@@ -81,6 +81,12 @@ const getDynamicNavBarConfig = (): NavBarConfig => {
 				icon: "simple-icons:zhihu",
 			},
 			{
+				name: "哔哩哔哩",
+				url: "https://space.bilibili.com/385777101",
+				external: true,
+				icon: "simple-icons:bilibili",
+			},
+			{
 				name: "QQ",
 				url: "https://wpa.qq.com/msgrd?v=3&uin=2951386895&site=qq&menu=yes",
 				external: true,

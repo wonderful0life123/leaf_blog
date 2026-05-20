@@ -40,6 +40,12 @@ export const profileConfig: ProfileConfig = {
 			showName: false,
 		},
 		{
+			name: "哔哩哔哩",
+			icon: "simple-icons:bilibili",
+			url: "https://space.bilibili.com/385777101",
+			showName: false,
+		},
+		{
 			name: "RSS",
 			icon: "fa7-solid:rss",
 			url: "/rss/",
