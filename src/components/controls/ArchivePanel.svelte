@@ -195,8 +195,8 @@ function getDefaultExpandedArchivePaths(
 	const nextExpandedPaths = new Set<string>();
 
 	const shouldExpandNode = (node: ArchiveTreeNode) => {
-		if (node.children.length === 0) return false;
-		if (activePaths.length === 0) return node.depth === 0;
+		if (!canToggleArchiveNode(node)) return false;
+		if (activePaths.length === 0) return true;
 		return activePaths.some(
 			(path) =>
 				path === node.name ||
@@ -221,8 +221,12 @@ function getDefaultExpandedArchivePaths(
 	return nextExpandedPaths;
 }
 
+function canToggleArchiveNode(node: ArchiveTreeNode) {
+	return node.children.length > 0 || node.posts.length > 0;
+}
+
 function isArchiveNodeExpanded(node: ArchiveTreeNode) {
-	return node.children.length === 0 || expandedArchivePaths.has(node.name);
+	return expandedArchivePaths.has(node.name);
 }
 
 function toggleArchiveNode(path: string) {
@@ -359,7 +363,7 @@ onMount(async () => {
 	{@const expanded = isArchiveNodeExpanded(node)}
 	<section class="archive-category-node" style={`--archive-depth: ${node.depth};`}>
 		<div class="archive-category-header">
-			{#if node.children.length > 0}
+			{#if canToggleArchiveNode(node)}
 				<button
 					type="button"
 					class="archive-category-toggle"
@@ -371,10 +375,10 @@ onMount(async () => {
 			{:else}
 				<div class="archive-category-branch" aria-hidden="true"></div>
 			{/if}
-			<a class="archive-category-title" href={`/archive/?category=${encodeURIComponent(node.name)}`}>
-				<span>{node.leafName}</span>
+			<a class="archive-category-link" href={`/archive/?category=${encodeURIComponent(node.name)}`}>
+				<span class="archive-category-title">{node.leafName}</span>
+				<span class="archive-category-count">{node.totalPosts}</span>
 			</a>
-			<span class="archive-category-count">{node.totalPosts}</span>
 		</div>
 
 		{#if expanded && node.posts.length > 0}
@@ -507,19 +511,34 @@ onMount(async () => {
 		background: color-mix(in srgb, var(--primary) 18%, transparent);
 	}
 
-	.archive-category-title {
+	.archive-category-link {
 		min-width: 0;
 		display: flex;
-		flex-direction: column;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
 		flex: 1 1 auto;
-		font-size: 1rem;
-		font-weight: 800;
+		min-height: 2.45rem;
+		padding: 0.3rem 0.45rem 0.3rem 0.6rem;
+		border-radius: 0.6rem;
 		color: var(--btn-content);
-		transition: color 150ms ease;
+		transition:
+			color 150ms ease,
+			background-color 150ms ease;
 	}
 
-	.archive-category-title:hover {
+	.archive-category-link:hover {
 		color: var(--primary);
+		background: var(--btn-plain-bg-hover);
+	}
+
+	.archive-category-title {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 1rem;
+		font-weight: 800;
 	}
 
 	.archive-category-count {
