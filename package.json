@@ -14,7 +14,13 @@
     "format": "biome format --write ./src",
     "lint": "biome check --write ./src",
     "preinstall": "npx only-allow pnpm",
-    "icons": "node scripts/generate-icons.js"
+    "icons": "node scripts/generate-icons.js",
+    "studio:prototype": "WONDER_STUDIO_LOCAL=1 ASTRO_TELEMETRY_DISABLED=1 node node_modules/astro/bin/astro.mjs dev --host 127.0.0.1 --port 4321",
+    "studio": "WONDER_STUDIO_LOCAL=1 ASTRO_TELEMETRY_DISABLED=1 node node_modules/astro/bin/astro.mjs dev --host 127.0.0.1 --port 4321",
+    "studio:backup": "node scripts/studio/backup.mjs",
+    "studio:test": "node --test tests/studio/*.test.mjs",
+    "studio:build": "WONDER_STUDIO_BUILD=1 ASTRO_TELEMETRY_DISABLED=1 node node_modules/astro/bin/astro.mjs build",
+    "studio:serve": "node --env-file=.env.studio scripts/studio/server.mjs"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.8",

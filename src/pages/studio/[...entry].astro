@@ -1,0 +1,74 @@
+---
+// Stage one: real local drafts; GitHub authentication and publishing come later.
+import fs from 'node:fs';
+import { createHash } from 'node:crypto';
+import path from 'node:path';
+import matter from 'gray-matter';
+import Studio from '../../components/studio/Studio.svelte';
+import MainGridLayout from '../../layouts/MainGridLayout.astro';
+export function getStaticPaths() {
+  return (process.env.WONDER_STUDIO_BUILD === "1" || (import.meta.env.DEV && process.env.WONDER_STUDIO_LOCAL === "1")) ? [{params: {entry: undefined}}] : [];
+}
+const serverBuild = process.env.WONDER_STUDIO_BUILD === '1';
+if (!serverBuild && (!import.meta.env.DEV || process.env.WONDER_STUDIO_LOCAL !== '1')) return new Response(null, { status: 404 });
+const vault = path.resolve('../obsidian_note');
+const posts = path.resolve('src/content/posts');
+function walk(root: string): string[] {
+  if (!fs.existsSync(root)) return [];
+  return fs.readdirSync(root, { withFileTypes: true }).flatMap(e => e.name.startsWith('.') ? [] : e.isDirectory() ? walk(path.join(root,e.name)) : /\.mdx?$/.test(e.name) ? [path.join(root,e.name)] : []);
+}
+const articles = serverBuild ? [] : walk(posts).map(file => {
+  const { data, content } = matter(fs.readFileSync(file,'utf8'));
+  return { id: path.relative(posts,file), title: data.title || path.basename(file), body: content.trim(), category: data.category || '', tags: (data.tags || []).join(', '), description: data.description || '', status: data.draft ? 'draft' : 'published', source: data.sourceLink || '', root: 'blog', path: path.relative(posts,file), date: data.updated || data.published };
+}).sort((a,b)=> Number(a.status==='draft')-Number(b.status==='draft'));
+const notes = serverBuild ? [] : walk(vault).map(file => ({ id: path.relative(vault,file), path: path.relative(vault,file), title: path.basename(file,'.md'), body: fs.readFileSync(file,'utf8'), folder: path.dirname(path.relative(vault,file)), root:'notes' }));
+const assetMap: Record<string,string> = {};
+function assets(root: string, kind: string, dir = root) {
+ if (!fs.existsSync(dir)) return;
+ for (const e of fs.readdirSync(dir,{withFileTypes:true})) {
+  if(e.name.startsWith('.')) continue;
+  const f=path.join(dir,e.name);
+  if(e.isDirectory()) assets(root,kind,f);
+  else if(e.isFile() && /\.(png|webp|avif|jpe?g|gif)$/i.test(f)) { const key=kind+'/'+path.relative(root,f);assetMap[key]=createHash('sha256').update(key).digest('hex').slice(0,24); }
+ }
+}
+if (!serverBuild) { assets(vault,'notes');assets(posts,'blog'); }
+---
+<MainGridLayout title="写作空间" description="在 wonder 里记录技术、生活与灵感。">
+  <meta slot="head" name="robots" content="noindex,nofollow" />
+  <div id="wonder-studio">
+    <Studio client:load serverMode={serverBuild} articles={JSON.parse(JSON.stringify(articles))} notes={notes} assetMap={assetMap}/>
+  </div>
+</MainGridLayout>
+
+<style is:global>
+  /* Reuse Firefly's actual banner, navigation, profile and theme. Only the
+     writing route takes the space otherwise used by the right widgets. */
+  #main-grid:has(#wonder-studio) { grid-template-columns: minmax(0, 1fr); }
+  #main-grid:has(#wonder-studio) #right-sidebar-static,
+  #main-grid:has(#wonder-studio) #right-sidebar-dynamic,
+  #main-grid:has(#wonder-studio) #category-bar-wrapper,
+  #main-grid:has(#wonder-studio) #mobile-bottom-sidebar { display: none; }
+  #main-grid:has(#wonder-studio) > div:has(> #swup-container) { grid-column: 1 / -1; min-width: 0; }
+  #main-grid:has(#wonder-studio) > div:last-child { grid-column: 1 / -1; }
+  #wonder-studio { min-width: 0; }
+  body.enable-banner:has(#wonder-studio) #wallpaper-wrapper { display: block !important; }
+  @media (min-width: 1024px) {
+    #main-grid:has(#wonder-studio) { grid-template-columns: 17.5rem minmax(0, 1fr); }
+    #main-grid:has(#wonder-studio) > div:has(> #swup-container) { grid-column: 2; }
+    #main-grid:has(#wonder-studio) #left-sidebar { grid-column: 1; display: flex; }
+  }
+  /* Keep the recognizable banner in desktop side-panel widths as well. */
+  @media (min-width: 768px) and (max-width: 1023px) {
+    body.enable-banner:has(#wonder-studio) #wallpaper-wrapper {
+      display: block !important; top: 0 !important; height: 22rem !important; transform: none !important;
+      opacity: 1 !important; pointer-events: auto !important;
+    }
+    body.enable-banner:has(#wonder-studio) .mobile-main-no-banner { top: 21rem !important; }
+    body.enable-banner:has(#wonder-studio) #main-grid { transform: none !important; }
+    body.enable-banner:has(#wonder-studio) .banner-page-title-overlay { display: flex; }
+  }
+  @media (max-width: 1023px) {
+    #main-grid:has(#wonder-studio) #left-sidebar-wrapper { display: none; }
+  }
+</style>

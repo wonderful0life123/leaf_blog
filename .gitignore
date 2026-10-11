@@ -37,3 +37,13 @@ Firefly-docs/
 cache/
 package/
 .obsidian/
+# Local writing data must never enter Git or the static site.
+.studio-data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Private server configuration and separate admin build
+studio-dist/
+.env.studio
+.env.studio.*

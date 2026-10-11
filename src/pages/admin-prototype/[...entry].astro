@@ -1,0 +1,7 @@
+---
+export function getStaticPaths() {
+  return import.meta.env.DEV && process.env.WONDER_STUDIO_LOCAL === "1" ? [{params: {entry: undefined}}] : [];
+}
+if (!import.meta.env.DEV) return new Response(null, {status:404});
+return Astro.redirect("/studio/", 302);
+---

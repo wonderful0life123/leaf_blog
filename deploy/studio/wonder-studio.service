@@ -1,0 +1,26 @@
+[Unit]
+Description=Wonder private writing studio
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wonder-studio
+Group=wonder-studio
+WorkingDirectory=/opt/wonder-studio
+EnvironmentFile=/etc/wonder-studio.env
+ExecStart=/usr/bin/node scripts/studio/server.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+UMask=0077
+StateDirectory=wonder-studio
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/wonder-studio
+
+[Install]
+WantedBy=multi-user.target

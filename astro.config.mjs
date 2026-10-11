@@ -1,3 +1,4 @@
+import { studioLocalPlugin } from './scripts/studio/plugin.mjs';
 import sitemap from "@astrojs/sitemap";
 import svelte from "@astrojs/svelte";
 import tailwindcss from "@tailwindcss/vite";
@@ -44,6 +45,7 @@ if (process.env.NODE_ENV === "development") {
 
 // https://astro.build/config
 export default defineConfig({
+  ...(process.env.WONDER_STUDIO_BUILD === "1" ? {outDir: "./studio-dist", build: {assets: "studio-static"}} : {}),
 	site: siteConfig.site_url,
 	
 	base: "/",
@@ -247,7 +249,7 @@ export default defineConfig({
 		],
 	},
 	vite: {
-		plugins: [tailwindcss()],
+		plugins: [tailwindcss(), studioLocalPlugin()],
 		server: {
 			watch: {
 				ignored: ["**/package/**", "**/Firefly-docs/**"],

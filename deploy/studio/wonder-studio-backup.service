@@ -1,0 +1,16 @@
+[Unit]
+Description=Consistent backup of Wonder drafts and attachments
+
+[Service]
+Type=oneshot
+User=wonder-studio
+Group=wonder-studio
+WorkingDirectory=/opt/wonder-studio
+EnvironmentFile=/etc/wonder-studio.env
+ExecStart=/usr/bin/node scripts/studio/backup.mjs
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/wonder-studio
