@@ -27,11 +27,16 @@ export function createHandler(store, {authorize, catalog} = {}) {
         try{return JSON.parse((await body(3*1024*1024)).toString());}catch(e){if(e instanceof StoreError)throw e;throw new StoreError(400,'JSON 格式无效');}
       }
       if(pathname==='/catalog'&&method==='GET'&&catalog)return json(200,catalog.scan());
-      if(pathname==='/drafts'&&method==='GET')return json(200,{drafts:store.list()});
+      if(pathname==='/drafts'&&method==='GET')return json(200,{drafts:store.list({trash:new URL(req.url,`http://${host}`).searchParams.get('state')==='trash'})});
       if(pathname==='/drafts'&&method==='POST')return json(201,{draft:store.create(await data())});
       const draft=pathname.match(/^\/drafts\/([^/]+)$/);
       if(draft&&method==='GET')return json(200,{draft:store.get(draft[1])});
       if(draft&&method==='PUT')return json(200,{draft:store.update(draft[1],await data())});
+      const action=pathname.match(/^\/drafts\/([^/]+)\/(trash|restore|purge|duplicate)$/);
+      if(action&&method==='POST'){
+        const input=await data();
+        return json(200,{draft:action[2]==='duplicate'?store.duplicate(action[1],input):store.lifecycle(action[1],action[2],input)});
+      }
       if(pathname==='/media'&&method==='POST')return json(201,store.upload(await body(10*1024*1024)));
       const image=pathname.match(/^\/media\/([a-f\d]{64})$/);
       if(image&&method==='GET') {

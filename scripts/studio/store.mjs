@@ -39,10 +39,15 @@ export function openStore({ dataDir, sourceRoots = {} }) {
     category TEXT NOT NULL, tags TEXT NOT NULL, source_key TEXT UNIQUE, source_json TEXT,
     assets_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
   ); CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, mime TEXT NOT NULL, bytes BLOB NOT NULL);
-  PRAGMA user_version=1;`);
+  `);
+  // Additive migration; keep a complete pre-migration snapshot of existing data.
+  if(!db.prepare('PRAGMA table_info(drafts)').all().some(c=>c.name==='deleted_at')){
+    if(db.prepare('SELECT COUNT(*) n FROM drafts').get().n)backup();
+    db.exec('BEGIN IMMEDIATE; ALTER TABLE drafts ADD COLUMN deleted_at TEXT; PRAGMA user_version=2; COMMIT;');
+  }
   fs.chmodSync(filename,0o600);
   const decode = row => row ? ({id:row.id,revision:row.revision,title:row.title,body:row.body,category:row.category,tags:row.tags,
-    source:row.source_json?JSON.parse(row.source_json):null,assets:JSON.parse(row.assets_json),createdAt:row.created_at,updatedAt:row.updated_at,status:'draft',persisted:true}) : null;
+    source:row.source_json?JSON.parse(row.source_json):null,assets:JSON.parse(row.assets_json),createdAt:row.created_at,updatedAt:row.updated_at,deletedAt:row.deleted_at||null,status:'draft',persisted:true}) : null;
   function get(id) { if(!uuid.test(id)) fail(400,'无效的草稿编号'); const d=decode(db.prepare('SELECT * FROM drafts WHERE id=?').get(id));if(!d)fail(404,'草稿不存在');return d; }
   function transaction(fn) { db.exec('BEGIN IMMEDIATE');try { const r=fn();db.exec('COMMIT');return r; }catch(e){db.exec('ROLLBACK');throw e;} }
   function putImage(bytes) {
@@ -102,7 +107,7 @@ export function openStore({ dataDir, sourceRoots = {} }) {
   }
   return {
     filename, get, backup,
-    list(){return db.prepare('SELECT * FROM drafts ORDER BY updated_at DESC').all().map(decode);},
+    list({trash=false}={}){return db.prepare(`SELECT * FROM drafts WHERE deleted_at IS ${trash?'NOT ':''}NULL ORDER BY ${trash?'deleted_at':'updated_at'} DESC`).all().map(decode);},
     create(input) {
       const value=fields(input);const id=input.id||randomUUID();if(!uuid.test(id))fail(400,'无效的草稿编号');
       const source=input.source ? {...input.source} : null;
@@ -111,10 +116,10 @@ export function openStore({ dataDir, sourceRoots = {} }) {
       beforeWrite();
       return transaction(()=>{
         const existing=db.prepare('SELECT * FROM drafts WHERE id=? OR source_key=?').get(id,key);
-        if(existing)return decode(existing);
+        if(existing){if(existing.deleted_at)fail(409,'这篇草稿已在回收站，请先恢复后再打开或导入。');return decode(existing);}
         if(source)source.baseHash=createHash('sha256').update(fs.readFileSync(resolveSource(source).file)).digest('hex');
         const assets=snapshotAssets(value.body,source,input.copyFrom?get(input.copyFrom).assets:{});const now=new Date().toISOString();
-        db.prepare('INSERT INTO drafts VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,1,value.title,value.body,value.category,value.tags,key,source?JSON.stringify(source):null,JSON.stringify(assets),now,now);
+        db.prepare('INSERT INTO drafts(id,revision,title,body,category,tags,source_key,source_json,assets_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,1,value.title,value.body,value.category,value.tags,key,source?JSON.stringify(source):null,JSON.stringify(assets),now,now);
         return get(id);
       });
     },
@@ -122,9 +127,34 @@ export function openStore({ dataDir, sourceRoots = {} }) {
       const value=fields(input);if(!Number.isSafeInteger(input.revision)||input.revision<1)fail(400,'缺少草稿版本');
       beforeWrite();
       return transaction(()=>{
-        const old=get(id);if(old.revision!==input.revision)fail(409,'另一页面已保存新版。你的修改仍保留在当前页面，请另存副本后再比较。');
+        const old=get(id);if(old.deletedAt)fail(409,'这篇草稿已移入回收站。请先恢复，或将当前修改另存副本。');if(old.revision!==input.revision)fail(409,'另一页面已保存新版。你的修改仍保留在当前页面，请另存副本后再比较。');
         const assets=snapshotAssets(value.body,old.source,old.assets);
         db.prepare('UPDATE drafts SET revision=revision+1,title=?,body=?,category=?,tags=?,assets_json=?,updated_at=? WHERE id=?').run(value.title,value.body,value.category,value.tags,JSON.stringify(assets),new Date().toISOString(),id);
+        return get(id);
+      });
+    },
+    duplicate(id,input){
+      const old=get(id);
+      if(old.deletedAt)fail(409,'请先恢复回收站中的草稿。');
+      if(old.revision!==input?.revision)fail(409,'草稿已有变化，请刷新列表后再复制。');
+      if(!uuid.test(input?.id))fail(400,'缺少副本编号');
+      return this.create({...fields(old),title:(old.title||'未命名文章').slice(0,490)+'（副本）',id:input.id,copyFrom:id});
+    },
+    lifecycle(id,action,input){
+      if(!['trash','restore','purge'].includes(action))fail(400,'无效操作');
+      if(!Number.isSafeInteger(input?.revision)||input.revision<1)fail(400,'缺少草稿版本');
+      beforeWrite();
+      return transaction(()=>{
+        const old=get(id);
+        if(old.revision!==input.revision)fail(409,'草稿已在其他页面修改，请刷新列表后重试。');
+        if(action==='trash'&&old.deletedAt)fail(409,'草稿已在回收站。');
+        if(action!=='trash'&&!old.deletedAt)fail(409,'只能恢复或彻底删除回收站中的草稿。');
+        if(action==='purge'){
+          db.prepare('DELETE FROM drafts WHERE id=?').run(id);
+          // Media may be shared with copies and other drafts. Do not delete it.
+          return null;
+        }
+        db.prepare('UPDATE drafts SET deleted_at=?,revision=revision+1,updated_at=? WHERE id=?').run(action==='trash'?new Date().toISOString():null,new Date().toISOString(),id);
         return get(id);
       });
     },

@@ -5,10 +5,29 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {once} from 'node:events';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {createStudioServer} from '../../scripts/studio/server.mjs';
 import {serverConfig} from '../../scripts/studio/config.mjs';
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV8sAAAAASUVORK5CYII=','base64');
+test('草稿复制、回收站、恢复和彻底删除接口要求登录同源及当前版本',async t=>{
+ const f=await setup(t),cookie=await f.login(),headers={Cookie:cookie,Origin:f.config.origin};
+ const d=(await f.request('/studio-api/drafts/',{method:'POST',headers,body:{title:'管理测试',body:'正文',category:'测试',tags:''}})).data.draft;
+ for(const action of ['duplicate','trash','restore','purge']){
+  const url=`/studio-api/drafts/${d.id}/${action}/`;
+  assert.equal((await f.request(url,{method:'POST',headers:{Origin:f.config.origin},body:{revision:1,id:randomUUID()}})).status,401);
+  assert.equal((await f.request(url,{method:'POST',headers:{Cookie:cookie,Origin:'https://evil.test'},body:{revision:1}})).status,403);
+ }
+ const action=async(name,revision=1)=>f.request(`/studio-api/drafts/${d.id}/${name}/`,{method:'POST',headers,body:{revision,id:randomUUID()}});
+ assert.equal((await action('duplicate')).status,200);
+ const deleted=(await action('trash')).data.draft;
+ assert.equal((await f.request('/studio-api/drafts/?state=trash',{headers})).data.drafts[0].id,d.id);
+ assert.equal((await action('restore')).status,409);
+ const restored=(await action('restore',deleted.revision)).data.draft;
+ const deletedAgain=(await action('trash',restored.revision)).data.draft;
+ assert.equal((await action('purge',deletedAgain.revision)).status,200);
+ assert.equal((await f.request(`/studio-api/drafts/${d.id}/`,{headers})).status,404);
+ assert.equal((await f.request('/studio-api/drafts/?state=trash',{headers})).data.drafts.length,0);
+});
 async function setup(t,overrides={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'wonder-auth-test-'));
   for(const d of ['web/studio','web/studio-static','posts','notes'])fs.mkdirSync(path.join(root,d),{recursive:true});

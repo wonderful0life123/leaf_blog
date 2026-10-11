@@ -8,6 +8,32 @@ import { openStore } from '../../scripts/studio/store.mjs';
 
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV8sAAAAASUVORK5CYII=','base64');
 const fields={title:'测试草稿',body:'正文',category:'AI/cuda',tags:'CUDA, 笔记'};
+test('回收站持久化、恢复保留图片、旧页面不能复活草稿',t=>{
+ const f=fixture(t),image=f.store.upload(png);
+ const d=f.store.create({...fields,body:`![图](${image.url})`});
+ assert.throws(()=>f.store.lifecycle(d.id,'purge',d),{status:409});
+ const deleted=f.store.lifecycle(d.id,'trash',d);
+ assert.equal(f.store.list().length,0);assert.equal(f.store.list({trash:true}).length,1);
+ assert.throws(()=>f.store.update(d.id,d),{status:409});
+ assert.throws(()=>f.store.lifecycle(d.id,'restore',d),{status:409});
+ f.restart();assert.equal(f.store.get(d.id).deletedAt,deleted.deletedAt);
+ const restored=f.store.lifecycle(d.id,'restore',deleted);
+ assert.equal(restored.body,d.body);assert.equal(restored.deletedAt,null);assert.equal(f.store.list().length,1);
+ assert.deepEqual(Buffer.from(f.store.media(image.id).bytes),png);
+});
+test('复制草稿保留附件快照且独立编辑，彻底删除不损坏其他草稿图片',t=>{
+ const f=fixture(t);fs.writeFileSync(path.join(f.notes,'a.md'),'note');fs.writeFileSync(path.join(f.notes,'a.png'),png);
+ const d=f.store.create({...fields,body:'![图](a.png)',source:{root:'notes',path:'a.md'}}),id=randomUUID();
+ const copy=f.store.duplicate(d.id,{revision:d.revision,id});
+ assert.equal(f.store.duplicate(d.id,{revision:d.revision,id}).id,copy.id);
+ assert.deepEqual(copy.assets,d.assets);assert.equal(copy.source,null);
+ f.store.update(copy.id,{...copy,title:'独立副本'});assert.equal(f.store.get(d.id).title,d.title);
+ const deleted=f.store.lifecycle(d.id,'trash',d);
+ assert.throws(()=>f.store.create({...fields,source:d.source}),{status:409});
+ f.store.lifecycle(d.id,'purge',deleted);assert.throws(()=>f.store.get(d.id),{status:404});
+ f.restart();assert.equal(f.store.get(copy.id).title,'独立副本');
+ assert.deepEqual(Buffer.from(f.store.media(Object.values(copy.assets)[0].split('/').filter(Boolean).pop()).bytes),png);
+});
 function fixture(t) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'wonder-studio-test-'));
   const notes=path.join(root,'notes');fs.mkdirSync(notes);

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import WritingEditor from './WritingEditor.svelte';
   import {editorPortal} from './editor-portal.mjs';
+  import {selectArticles,excerpt,displayDate} from './draft-list.mjs';
   import { marked } from 'marked';
   import katex from 'katex';
   import 'katex/dist/katex.min.css';
@@ -12,6 +13,7 @@
   let account = null, authNeeded = false, loginError = "";
   $: storageLabel = serverMode ? "服务器" : "本机";
   let drafts = [], items = [], loading = true, busy = false, uploading = false;
+  let trash=[],sort='updated',pendingAction=null;
   let screen = 'home', filter = 'all', search = '', current = null;
   let dialog = '', noteQuery = '', folder = 'all', selected = null, notice = '', saved = '';
   let focused = true, settingsOpen = false;
@@ -22,16 +24,17 @@
   const sourcePairs = {'AI Infra/cuda/全局位置计算.md':'ai-infra/cuda/global-indexing.md','AI Infra/cuda/element wise算子.md':'ai-infra/cuda/element-wise.md','AI Infra/cuda/参考资料.md':'ai-infra/cuda/references.md','AI Infra/telilang/TileLang-ascend.md':'ai-infra/telilang/tilelang-ascend.md'};
   const normalize = d => ({...d, root:d.source?.root||'blog',path:d.source?.path||'',noteId:d.source?.root==='notes'?d.source.path:undefined});
   $: items = [...drafts, ...articles.filter(a=>!drafts.some(d=>d.source?.root==='blog'&&d.source.path===a.path))];
-  $: filtered = items.filter(a=>(filter==='all'||(filter==='draft'?a.status==='draft':a.status==='published')) && (a.title+' '+a.category).toLowerCase().includes(search.toLowerCase()));
+  $: filtered = selectArticles(filter==='trash'?trash:items,filter,search,sort);
   $: found = notes.filter(n=>(folder==='all'||n.folder===folder) && (n.title+' '+n.folder).toLowerCase().includes(noteQuery.toLowerCase()));
   $: draftCount = items.filter(a=>a.status==='draft').length;
   $: preview = current ? markdown(current.body,current) : '';
   $: notePreview = selected ? markdown(selected.body,selected) : '';
   function portal(node) { document.body.appendChild(node);return {destroy(){node.remove();}}; }
   function toast(text) { notice=text; clearTimeout(toastTimer); toastTimer=setTimeout(()=>notice='',4500); }
-  function keydown(e) { if(e.key==='Escape')dialog='';if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();persist();} }
+  function keydown(e) { if(e.key==='Escape'&&!busy)dialog='';if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();persist();} }
   async function request(url,options={}) {
-    const response=await fetch('/studio-api'+url+'/',{...options,signal:AbortSignal.timeout(15000)});
+    const [pathname,query]=url.split('?');
+    const response=await fetch('/studio-api'+pathname+'/'+(query?'?'+query:''),{...options,signal:AbortSignal.timeout(15000)});
     const result=await response.json();
     if(!response.ok){if(serverMode&&response.status===401)authNeeded=true;const e=new Error(result.error||'请求失败');e.status=response.status;throw e;}
     return result;
@@ -45,13 +48,17 @@
   }
   function clearRecovery(id){try{sessionStorage.removeItem(recoveryKey(id));}catch{}}
   function remember(d){drafts=[normalize(d),...drafts.filter(a=>a.id!==d.id)];}
+  async function refreshDrafts(){
+    const [active,deleted]=await Promise.all([request('/drafts'),request('/drafts?state=trash')]);
+    drafts=active.drafts.map(normalize);trash=deleted.drafts.map(normalize);
+  }
   function address(id){const url=new URL(location.href);if(id)url.searchParams.set('draft',id);else url.searchParams.delete('draft');history.replaceState({},'',url);}
   async function initialize() {
     loading=true;loadError='';
     if(serverMode){const code=new URL(location.href).searchParams.get('loginError');loginError={denied:'这个 GitHub 账号没有写作权限，请切换到博客主人的账号。',unavailable:'GitHub 暂时无法连接，请稍后重新登录。',busy:'登录尝试较多，请稍后再试。',expired:'登录已取消或验证过期，请重新开始。'}[code]||'';}
     try {
       if(serverMode){account=(await request('/session')).user;authNeeded=false;const catalog=await request('/catalog');articles=catalog.articles;notes=catalog.notes;assetMap=catalog.assetMap;}
-      drafts=(await request('/drafts')).drafts.map(normalize);
+      await refreshDrafts();
       const id=new URL(location.href).searchParams.get('draft');
       if(id){const draft=drafts.find(d=>d.id===id);if(draft)open(draft);else{address(null);loadError='找不到之前打开的草稿，请从列表选择。';}}
     }catch(e){if(serverMode&&e.status===401){account=null;}else loadError='无法读取草稿，请确认保存服务已启动后重试。';}
@@ -89,7 +96,7 @@
   async function edit(a) {
     if(loading||busy||uploading)return;
     if(!(await persist()))return;
-    if(a.persisted){busy=true;try{open((await request('/drafts/'+a.id)).draft);}catch(e){toast(e.message);}finally{busy=false;}return;}
+    if(a.persisted){busy=true;try{const d=(await request('/drafts/'+a.id)).draft;if(d.deletedAt)throw new Error('这篇草稿已在回收站，请先恢复。');remember(d);open(d);}catch(e){toast(e.message);}finally{busy=false;}return;}
     busy=true;
     try {
       const draft=(await request('/drafts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload(a),id:crypto.randomUUID(),source:{root:a.root,path:a.path}})})).draft;
@@ -99,8 +106,26 @@
   async function create() {
     if(loading||busy||uploading||!(await persist()))return;
     busy=true;
-    try {const draft=(await request('/drafts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:crypto.randomUUID(),title:'',body:'',category:'',tags:''})})).draft;remember(draft);open(draft);}
+    try {const draft=(await request('/drafts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:crypto.randomUUID(),title:'',body:'',category:'',tags:''})})).draft;remember(draft);filter='draft';search='';open(draft);}
     catch(e){toast(e.message);}finally{busy=false;}
+  }
+  async function duplicateDraft(article){
+    if(busy||loading)return;busy=true;
+    try{
+      const {draft}=await request('/drafts/'+article.id+'/duplicate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:crypto.randomUUID(),revision:article.revision})});
+      remember(draft);open(draft);toast('已复制为独立草稿，原草稿保持不变。');
+    }catch(e){toast(e.message);}finally{busy=false;}
+  }
+  function confirmAction(article,action){if(busy)return;pendingAction={article,action};dialog='draft-action';}
+  async function manageDraft(article,action){
+    if(busy)return;busy=true;
+    try{
+      const {draft}=await request('/drafts/'+article.id+'/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:article.revision})});
+      drafts=drafts.filter(d=>d.id!==article.id);trash=trash.filter(d=>d.id!==article.id);
+      if(draft){if(draft.deletedAt)trash=[normalize(draft),...trash];else remember(draft);}
+      clearRecovery(article.id);dialog='';pendingAction=null;
+      toast(action==='trash'?'已移入回收站，可随时恢复。':action==='restore'?'草稿已恢复。':'草稿已彻底删除。');
+    }catch(e){toast(e.message);if(e.status===409||e.status===404){try{await refreshDrafts();dialog='';pendingAction=null;}catch{}}}finally{busy=false;}
   }
   async function persist() {
     clearTimeout(timer);
@@ -207,6 +232,7 @@
     <button class:active={screen==='home'&&filter==='all'} on:click={async()=>{await home();filter='all';}}>▤ 全部文章 <em>{items.length}</em></button>
     <button class:active={screen==='home'&&filter==='draft'} on:click={async()=>{await home();filter='draft';}}>◷ 草稿 <em>{draftCount}</em></button>
     <button class:active={screen==='home'&&filter==='published'} on:click={async()=>{await home();filter='published';}}>◎ 已发布</button>
+    <button class:active={screen==='home'&&filter==='trash'} on:click={async()=>{await home();filter='trash';}}>♲ 回收站 <em>{trash.length}</em></button>
     <button on:click={showImport}>⌘ 笔记库 <em>{notes.length}</em></button>
     <button class="account" on:click={()=>dialog='account'}>{serverMode?account?.login:'本机写作'}</button>
   </nav>
@@ -219,9 +245,24 @@
     {#if screen==='home'}
       <section class="home">
         <div class="welcome card-base"><div><div class="eyebrow">记录技术、生活与灵感</div><h1>把想法写成文字</h1><p>记录一个想法，或者接着上次的探索。</p></div><div class="welcome-actions"><button on:click={showImport}>⌘ 从笔记导入</button><button class="primary" disabled={loading||busy} on:click={create}>＋ 写文章</button></div></div>
-        <div class="list-heading"><h2>你的文章 <span>{items.length}</span></h2><label class="search">⌕ <input aria-label="搜索文章" placeholder="搜索标题、分类…" bind:value={search}/></label></div>
-        <div class="tabs"><button class:selected={filter==='all'} on:click={()=>filter='all'}>全部文章</button><button class:selected={filter==='draft'} on:click={()=>filter='draft'}>草稿 <span>{draftCount}</span></button><button class:selected={filter==='published'} on:click={()=>filter='published'}>已发布</button><span class="sort-label">{storageLabel}草稿优先</span></div>
-        <div class="article-table"><div class="table-head"><span>文章</span><span>分类</span><span>状态</span><span></span></div>{#each filtered as article}<button class="article-row card-base" disabled={loading||busy} on:click={()=>edit(article)}><div class="article-name"><span class="file-icon">≡</span><div><strong>{article.title||'未命名文章'}</strong><small>{article.persisted?'已保存在'+storageLabel+' · ':''}{article.noteId?'来自笔记 · ':''}{article.description || (article.path?'Markdown · '+article.path:'等待你的第一个想法')}</small></div></div><span class="category">{article.category||'待分类'}</span><span class:published={article.status==='published'} class="status"><i></i>{status(article)}</span><span class="row-arrow">↗</span></button>{/each}{#if !filtered.length}<div class="empty">没有找到文章。换个关键词，或开始写一篇新的。</div>{/if}</div>
+        <div class="list-heading"><h2>{filter==='trash'?'回收站':'你的文章'} <span>{filter==='trash'?trash.length:items.length}</span></h2><label class="search">⌕ <input aria-label="搜索文章" placeholder="搜索标题、正文、分类、标签…" bind:value={search}/></label></div>
+        <div class="tabs"><button class:selected={filter==='all'} on:click={()=>filter='all'}>全部文章</button><button class:selected={filter==='draft'} on:click={()=>filter='draft'}>草稿 <span>{draftCount}</span></button><button class:selected={filter==='published'} on:click={()=>filter='published'}>已发布</button><button class:selected={filter==='trash'} on:click={()=>filter='trash'}>回收站 <span>{trash.length}</span></button><select aria-label="文章排序" bind:value={sort}><option value="updated">最近修改</option><option value="created">最近创建</option><option value="title">标题排序</option></select><button disabled={loading||busy} on:click={async()=>{try{await refreshDrafts();toast('列表已刷新。');}catch(e){toast(e.message);}}}>刷新列表</button></div>
+        {#if filter==='trash'}<p class="trash-hint">草稿会一直保留在回收站，直到你主动彻底删除。已发布的博客原文不受影响。</p>{/if}
+        <div class="article-table">
+          {#each filtered as article (article.id)}
+            <div class="managed-row card-base">
+              <button class="article-row" disabled={loading||busy||filter==='trash'} on:click={()=>edit(article)}>
+                <div class="article-name"><span class="file-icon">≡</span><div><strong>{article.title||'未命名文章'}</strong><small>{excerpt(article)}</small><small>{filter==='trash'?'移入回收站：':'更新：'}{displayDate(filter==='trash'?article.deletedAt:article.updatedAt)||'仓库文章'}{article.tags?' · '+article.tags:''}</small></div></div>
+                <span class="category">{article.category||'待分类'}</span><span class:published={article.status==='published'} class="status"><i></i>{filter==='trash'?'回收站':status(article)}</span>{#if filter!=='trash'}<span class="row-arrow">↗</span>{/if}
+              </button>
+              {#if article.persisted}<div class="row-actions" aria-label={(article.title||'未命名文章')+'的操作'}>
+                {#if filter==='trash'}<button disabled={busy} on:click={()=>manageDraft(article,'restore')}>恢复草稿</button><button class="danger" disabled={busy} on:click={()=>confirmAction(article,'purge')}>彻底删除</button>
+                {:else}<button disabled={busy} on:click={()=>duplicateDraft(article)}>复制草稿</button><button disabled={busy} on:click={()=>confirmAction(article,'trash')}>移入回收站</button>{/if}
+              </div>{/if}
+            </div>
+          {/each}
+          {#if !filtered.length}<div class="empty">{filter==='trash'?'回收站中没有匹配的草稿。':'没有找到文章。换个关键词，或开始写一篇新的。'}</div>{/if}
+        </div>
         <footer>每一篇文章，都从一个小小的想法开始。<span>wonder · 写作空间</span></footer>
       </section>
     {:else if current}
@@ -242,9 +283,10 @@
 {/if}
 {#if notice}<div class="toast" role="status" use:portal>✓ {notice}</div>{/if}
 {#if dialog}
-  <div class="overlay" use:portal role="presentation" on:click={e=>{if(e.target===e.currentTarget&&!publishing)dialog='';}}>
-    <div class="modal card-base" class:import-modal={dialog==='import'} role="dialog" aria-modal="true" aria-label={dialog==='import'?'从笔记导入':'预览说明'} tabindex="-1"><div class="modal-heading"><div><span class="eyebrow">wonder · 写作空间</span><h2>{dialog==='import'?'从笔记里，挑一个想法。':dialog==='publish'?'草稿已保存，发布尚未接通':dialog==='account'?(serverMode?'GitHub 账号':'当前使用本机写作'):'草稿保存说明'}</h2></div><button aria-label="关闭弹窗" disabled={publishing} on:click={()=>dialog=''}>✕</button></div>
-    {#if dialog==='import'}<div class="import-tools"><label class="search">⌕ <input aria-label="搜索笔记" placeholder="搜索笔记名称或目录…" bind:value={noteQuery}/></label><select aria-label="笔记目录" bind:value={folder}><option value="all">全部目录 · {notes.length} 篇</option>{#each folders as f}<option value={f}>{f}</option>{/each}</select></div><div class="import-body"><div class="note-list">{#each found as n}<button class:chosen={selected?.id===n.id} on:click={()=>selected=n}><span>{n.title}</span><small>{n.folder}</small>{#if sourcePairs[n.id]}<em>已关联博客</em>{/if}</button>{/each}{#if !found.length}<p class="empty">没有匹配的笔记</p>{/if}</div><div class="note-detail">{#if selected}<span class="category">{selected.folder}</span><h2>{selected.title}</h2><article class="prose">{@html notePreview}</article>{/if}</div></div><div class="modal-footer"><span>正文与图片一起预览，原笔记保持不变。</span><button class="primary" disabled={!selected||busy||loading} on:click={importNote}>{selected&&(sourcePairs[selected.id]||items.some(a=>a.noteId===selected.id))?'打开已有文章':'导入并保存草稿'} →</button></div>
+  <div class="overlay" use:portal role="presentation" on:click={e=>{if(e.target===e.currentTarget&&!publishing&&!busy)dialog='';}}>
+    <div class="modal card-base" class:import-modal={dialog==='import'} role="dialog" aria-modal="true" aria-label={dialog==='draft-action'?'草稿操作确认':dialog==='import'?'从笔记导入':'预览说明'} tabindex="-1"><div class="modal-heading"><div><span class="eyebrow">wonder · 写作空间</span><h2>{dialog==='draft-action'?(pendingAction?.action==='purge'?'彻底删除草稿？':'移入回收站？'):dialog==='import'?'从笔记里，挑一个想法。':dialog==='publish'?'草稿已保存，发布尚未接通':dialog==='account'?(serverMode?'GitHub 账号':'当前使用本机写作'):'草稿保存说明'}</h2></div><button aria-label="关闭弹窗" disabled={publishing||busy} on:click={()=>dialog=''}>✕</button></div>
+    {#if dialog==='draft-action'&&pendingAction}<p class="modal-copy">{pendingAction.article.title||'未命名文章'}</p><p class="modal-copy">{pendingAction.action==='purge'?'彻底删除后，无法从回收站恢复此草稿。此操作不会删除博客原文或其他草稿共用的图片。':'正文和图片引用会保留，可在回收站恢复。此操作不会删除已发布的博客原文。'}</p><div class="modal-footer"><button disabled={busy} on:click={()=>dialog=''}>取消</button><button class:danger={pendingAction.action==='purge'} disabled={busy} on:click={()=>manageDraft(pendingAction.article,pendingAction.action)}>{busy?'正在处理…':pendingAction.action==='purge'?'确认彻底删除':'确认移入回收站'}</button></div>
+    {:else if dialog==='import'}<div class="import-tools"><label class="search">⌕ <input aria-label="搜索笔记" placeholder="搜索笔记名称或目录…" bind:value={noteQuery}/></label><select aria-label="笔记目录" bind:value={folder}><option value="all">全部目录 · {notes.length} 篇</option>{#each folders as f}<option value={f}>{f}</option>{/each}</select></div><div class="import-body"><div class="note-list">{#each found as n}<button class:chosen={selected?.id===n.id} on:click={()=>selected=n}><span>{n.title}</span><small>{n.folder}</small>{#if sourcePairs[n.id]}<em>已关联博客</em>{/if}</button>{/each}{#if !found.length}<p class="empty">没有匹配的笔记</p>{/if}</div><div class="note-detail">{#if selected}<span class="category">{selected.folder}</span><h2>{selected.title}</h2><article class="prose">{@html notePreview}</article>{/if}</div></div><div class="modal-footer"><span>正文与图片一起预览，原笔记保持不变。</span><button class="primary" disabled={!selected||busy||loading} on:click={importNote}>{selected&&(sourcePairs[selected.id]||items.some(a=>a.noteId===selected.id))?'打开已有文章':'导入并保存草稿'} →</button></div>
     {:else if dialog==='publish'}<p class="modal-copy">正文、分类、标签和图片已保存到{storageLabel}。这一步不会提交到 GitHub，也不会更新线上博客。</p><div class="publish-summary"><h3>{current.title||'未命名文章'}</h3><p>{current.category||'待分类'} · {current.body.length} 字符 · 第 {current.revision} 版</p></div><div class="modal-footer"><button on:click={()=>dialog=''}>继续编辑</button><button class="primary" on:click={exportFile}>导出正文</button></div>
     {:else if dialog==='account'}{#if serverMode}<p class="modal-copy">已登录为 {account?.login}。草稿和图片保存在服务器，其他设备登录同一账号即可继续编辑。</p><button class="wide" on:click={logout}>保存并退出登录</button>{:else}<p class="modal-copy">现在仅允许在这台电脑访问，不需要登录。下一阶段将接入 GitHub 登录，再部署到服务器供你跨设备使用。</p><button class="primary wide" on:click={()=>dialog=''}>继续写作</button>{/if}
     {:else}<p class="modal-copy">新建、编辑或导入的内容保存到独立的{storageLabel}草稿库，正文和上传图片在刷新页面、重启服务后仍会保留。博客与笔记仓库原文件不会被改动。</p><p class="modal-copy">编辑停止约半秒后自动保存。保存失败或其他页面更新了同一草稿时，会明确提示，保留当前修改。请等待“已保存到{storageLabel}”再关闭页面。</p><p class="modal-copy">{serverMode?'登录后可以跨设备读取服务器草稿，真实构建预览和发布将在后续接入。':'本机保存暂不支持跨设备。GitHub 登录、真实构建预览和发布将在后续接入。'}</p><button class="primary wide" on:click={()=>dialog=''}>知道了</button>{/if}
@@ -253,6 +295,8 @@
 {/if}
 
 <style>
+.managed-row{overflow:hidden}.managed-row .article-row{border:0;border-radius:0}.managed-row .article-row:disabled{opacity:1}.row-actions{display:flex;justify-content:flex-end;gap:.6rem;padding:.5rem 1.4rem .9rem}.row-actions button{font-size:.75rem;padding:.4rem .7rem}.danger{color:#b83d45}.trash-hint{font-size:.85rem;color:var(--content-meta);padding:.7rem 0}.tabs{flex-wrap:wrap}.tabs select{margin-left:auto;font-size:.8rem}.tabs>button:last-child{font-size:.8rem}
+
 .login-panel { padding:3rem; color:var(--text-90); }
 .login-panel h1 { font-size:2rem; font-weight:700; margin:1rem 0; }
 .login-panel p { line-height:1.8; margin:1rem 0; }
