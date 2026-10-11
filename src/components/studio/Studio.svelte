@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import WritingEditor from './WritingEditor.svelte';
   import { marked } from 'marked';
   import katex from 'katex';
   import 'katex/dist/katex.min.css';
@@ -13,7 +14,7 @@
   let screen = 'home', filter = 'all', search = '', current = null;
   let dialog = '', noteQuery = '', folder = 'all', selected = null, notice = '', saved = '';
   let focused = true, settingsOpen = false;
-  let mode = 'write', publishing = false, timer, toastTimer;
+  let bodyEditor, publishing = false, timer, toastTimer;
   let dirty = false, saving = false, saveError = '', conflict = false, editVersion = 0, saveTask = null;
   let recoveryWarning = '', loadError = '';
   $: folders = [...new Set(notes.map(n=>n.folder))].sort();
@@ -140,7 +141,7 @@
   }
   function changed() {dirty=true;editVersion++;saved='有修改，等待保存…';queueMicrotask(backupLocal);clearTimeout(timer);if(!conflict)timer=setTimeout(persist,600);}
   async function home() {if(busy)return;if(uploading){toast('图片正在保存，请稍候。');return;}if(await persist()){screen='home';current=null;address(null);}}
-  function insert(text) {if(!current||busy)return;current.body+=(current.body?'\n\n':'')+text;changed();}
+  async function insert(text) {if(!current||busy)return;await bodyEditor?.insertText(text);}
   function category(p) {return p==='.'?'':p.replace(/^AI Infra/,'AI infra').replace(/\/tilelang-puzzles$/,'/TileLang Puzzles');}
   async function importNote() {
     if(!selected||busy||uploading)return;
@@ -169,13 +170,11 @@
       for(const file of files){
         if(file.size>10*1024*1024)throw new Error('每张图片最多 10 MB');
         const result=await request('/media',{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
-        insert(`![${file.name.replace(/[\[\]]/g,'')}](${result.url})`);
+        await insert(`![${file.name.replace(/[\[\]]/g,'')}](${result.url})`);
       }
       if(await persist())toast('图片与正文已保存到'+storageLabel+'。');
     }catch(e){toast(e.message);}finally{uploading=false;}
   }
-  async function upload(e){const files=[...e.target.files||[]];e.target.value='';await uploadFiles(files);}
-  function paste(e){const files=[...e.clipboardData?.files||[]].filter(f=>f.type.startsWith('image/'));if(files.length){e.preventDefault();uploadFiles(files);}}
   async function reauthenticate(){try{account=(await request('/session')).user;authNeeded=false;await persist();}catch(e){toast('请先在新窗口完成 GitHub 登录，再重试。');}}
   async function logout(){if(uploading||busy||!(await persist()))return;try{await request('/logout',{method:'POST'});for(const key of Object.keys(sessionStorage))if(key.startsWith('wonder-draft-recovery:'))sessionStorage.removeItem(key);current=null;drafts=[];notes=[];articles=[];account=null;dialog='';location.assign('/studio/');}catch(e){toast(e.message);}}
   function status(a){return a.persisted?storageLabel+'草稿':a.status==='published'?'已发布':'仓库草稿';}
@@ -248,7 +247,10 @@
         {#if authNeeded&&!saveError}<div class="save-error" role="alert">登录已失效，当前文字仍保留。<a data-auth-link data-no-swup href="/studio-auth/login/" target="_blank" rel="noopener noreferrer">在新窗口重新登录</a><button on:click={reauthenticate}>登录后继续</button></div>{/if}
         {#if recoveryWarning}<p class="save-error">{recoveryWarning}</p>{/if}
         <div class="editor-heading"><div class="eyebrow">{current.noteId?'从笔记开始':'把想法写下来'} <span class="small-status">{status(current)}</span></div><input class="title-input" disabled={busy} aria-label="文章标题" placeholder="给这篇文章起个标题…" bind:value={current.title} on:input={changed}/>{#if current.noteId}<p class="source-line">⌘ {current.noteId} · {storageLabel}副本，不改动原笔记</p>{/if}</div>
-        <div class="editor-layout" class:with-settings={settingsOpen}><div class="writing-area"><div class="toolbar"><div><button title="插入标题" on:click={()=>insert('## 小标题')}>H₂</button><button title="插入代码块" on:click={()=>insert('```python\n# 在这里写代码\n```')}>〈/〉</button><button title="插入公式" on:click={()=>insert('$$\ny = x^2\n$$')}>ƒx</button><label class="upload" title="上传图片，也可在正文中粘贴截图">▧ 图片<input type="file" aria-label="上传图片" accept="image/png,image/jpeg,image/gif,image/webp,image/avif" multiple disabled={uploading||busy} on:change={upload}/></label></div><div class="view-toggle"><button class:selected={mode==='write'} on:click={()=>mode='write'}>编辑</button><button class:selected={mode==='split'} on:click={()=>mode='split'}>分屏</button><button class:selected={mode==='preview'} on:click={()=>mode='preview'}>预览</button></div></div><div class="panes" class:split={mode==='split'}>{#if mode!=='preview'}<textarea disabled={busy} aria-label="Markdown 正文" placeholder="不必想好开头，先写下一句话。\n\n支持 Markdown、代码块和数学公式。" bind:value={current.body} on:input={changed} on:paste={paste} spellcheck="false"></textarea>{/if}{#if mode!=='write'}<article class="prose">{#if current.body}{@html preview}{:else}<div class="preview-empty">你的文字，会在这里慢慢成形。<small>输入正文即可查看预览</small></div>{/if}</article>{/if}</div><div class="editor-foot"><span>{current.body.length.toLocaleString()} 字符 · Markdown</span><span>辅助预览 · 正式效果以博客构建为准</span></div></div>{#if settingsOpen}<aside class="properties"><h3>文章设置</h3><label>分类<input disabled={busy} placeholder="例如 AI infra/cuda" bind:value={current.category} on:input={changed}/></label><p>用 / 分隔层级，分类不会改变文章网址。</p><label>标签<input disabled={busy} placeholder="CUDA, GPU, 学习笔记" bind:value={current.tags} on:input={changed}/></label><div class="property-divider"></div><h4>保存与发布</h4><p>修改会自动保存到{storageLabel}，等待显示“已保存到{storageLabel}”后再离开。</p><div class="private-note">◈ 草稿与博客仓库分开保存<br/><span>当前不会提交或发布到网站。</span></div><button class="wide" on:click={showImport}>⌘ 浏览我的笔记</button></aside>{/if}</div>
+        <div class="editor-layout" class:with-settings={settingsOpen}>
+          <div class="writing-area">
+            {#key current.id}<WritingEditor bind:this={bodyEditor} value={current.body} {preview} disabled={busy} {uploading} onChange={text=>{current.body=text;changed();}} onImages={uploadFiles}/>{/key}
+          </div>{#if settingsOpen}<aside class="properties"><h3>文章设置</h3><label>分类<input disabled={busy} placeholder="例如 AI infra/cuda" bind:value={current.category} on:input={changed}/></label><p>用 / 分隔层级，分类不会改变文章网址。</p><label>标签<input disabled={busy} placeholder="CUDA, GPU, 学习笔记" bind:value={current.tags} on:input={changed}/></label><div class="property-divider"></div><h4>保存与发布</h4><p>修改会自动保存到{storageLabel}，等待显示“已保存到{storageLabel}”后再离开。</p><div class="private-note">◈ 草稿与博客仓库分开保存<br/><span>当前不会提交或发布到网站。</span></div><button class="wide" on:click={showImport}>⌘ 浏览我的笔记</button></aside>{/if}</div>
       </section>
     {/if}
   </div>
@@ -341,19 +343,8 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
 .source-line { font-size:.75rem; color:var(--content-meta); margin-top:.5rem; }
 .editor-layout { display:grid; grid-template-columns:minmax(0,1fr); gap:1.4rem; }
 .editor-layout.with-settings { grid-template-columns:minmax(0,1fr) 220px; }
-.writing-area { border:1px solid var(--line-divider); border-radius:var(--radius-large); overflow:hidden; min-width:0; }
-.toolbar { display:flex; justify-content:space-between; align-items:center; padding:.5rem .7rem; border-bottom:1px solid var(--line-divider); background:var(--btn-regular-bg); }
-.toolbar>div { display:flex; align-items:center; gap:.2rem; }
-.toolbar button,.upload { background:transparent; border:0; border-radius:.4rem; font-size:.85rem; padding:.3rem .6rem; color:var(--btn-content); }
-.upload { cursor:pointer; }
-.upload input { display:none; }
-.view-toggle button { font-size:.75rem; }
-.view-toggle button.selected { background:var(--card-bg); }
-.panes { display:grid; grid-template-columns:minmax(0,1fr); min-height:65vh; }
-.panes.split { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
-.panes textarea { min-height:65vh; width:100%; padding:1.5rem; border:0; outline:none; color:var(--studio-text); background:var(--card-bg); resize:vertical; font-family:'JetBrains Mono Variable',monospace; font-size:1rem; line-height:1.9; }
-.panes.split textarea { border-right:1px solid var(--line-divider); }
-.panes .prose { padding:1.5rem; min-width:0; max-width:none; max-height:75vh; overflow:auto; overflow-wrap:anywhere; }
+.writing-area { min-width:0; min-height:0; height:70vh; }
+.prose { padding:1.5rem; min-width:0; max-width:none; max-height:75vh; overflow:auto; overflow-wrap:anywhere; }
 .prose { --tw-prose-body:var(--studio-text); --tw-prose-headings:var(--studio-text); --tw-prose-bold:var(--studio-text); --tw-prose-quotes:var(--studio-text); --tw-prose-links:var(--btn-content); --tw-prose-counters:var(--content-meta); --tw-prose-bullets:var(--content-meta); color:var(--studio-text); font-size:.95rem; line-height:1.85; }
 .prose :global(h1) { font-size:1.7rem; font-weight:700; margin:.6rem 0 1.2rem; }
 .prose :global(h2) { font-size:1.4rem; font-weight:700; margin:1.5rem 0 .8rem; border-bottom:1px solid var(--line-divider); padding-bottom:.5rem; }
@@ -370,7 +361,6 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
 .prose :global(blockquote) { border-left:3px solid var(--primary); padding:.2rem 1rem; margin:1rem 0; background:var(--btn-regular-bg); }
 .prose :global(a) { color:var(--btn-content); text-decoration:underline; }
 .prose :global(.katex-display) { overflow:auto; }
-.editor-foot { display:flex; justify-content:space-between; gap:1rem; padding:.75rem; border-top:1px solid var(--line-divider); font-size:.65rem; color:var(--content-meta); }
 .properties h3 { font-size:1rem; font-weight:700; margin:.5rem 0 1.2rem; }
 .properties label { display:block; font-size:.8rem; margin:1rem 0 .5rem; }
 .properties input { width:100%; font-size:.8rem; margin-top:.5rem; }
@@ -379,8 +369,6 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
 .properties h4 { font-size:.85rem; font-weight:600; margin-bottom:.7rem; }
 .private-note { padding:.8rem; background:var(--btn-regular-bg); color:var(--btn-content); font-size:.7rem; line-height:2; border-radius:.6rem; margin:1rem 0; }
 .wide { width:100%; font-size:.8rem; }
-.preview-empty { padding:3rem 0; text-align:center; font-size:.85rem; color:var(--content-meta); }
-.preview-empty small { display:block; font-size:.75rem; margin-top:.6rem; }
 .toast { position:fixed; z-index:1110; left:50%; top:5.5rem; transform:translateX(-50%); padding:1rem 1.5rem; background:var(--float-panel-bg); color:var(--btn-content); border:1px solid var(--line-divider); border-radius:var(--radius-large); box-shadow:0 8px 32px #0002; max-width:90vw; font-size:.85rem; }
 .overlay { position:fixed; inset:0; z-index:1100; display:flex; align-items:center; justify-content:center; background:#0006; backdrop-filter:blur(5px); padding:1.5rem; color:var(--studio-text); }
 .modal { width:540px; max-width:100%; max-height:90vh; overflow:auto; padding:1.8rem; box-shadow:0 20px 80px #0003; }
@@ -424,24 +412,19 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
  .article-row { padding:1.3rem 1.2rem; grid-template-columns:minmax(0,1fr) auto 2.2rem; gap:.4rem; }.article-row::before { left:.7rem; top:1.7rem; }.article-name strong { font-size:1.1rem; }.article-name small { font-size:.8rem; }.category,.status { font-size:.7rem; }
  footer { font-size:.7rem; }footer span { display:none; }
  .editor { padding:1rem; }.editor-top { gap:.5rem; }.save-status { font-size:.65rem; }.editor-actions { width:100%; justify-content:flex-end; }.editor-heading { padding:1.2rem 0; }.title-input { font-size:1.5rem; }
- .panes.split { grid-template-columns:1fr; }.panes.split textarea { border-right:0; border-bottom:1px solid var(--line-divider); min-height:260px; }.panes textarea { min-height:340px; padding:1.1rem; font-size:.8rem; }.panes .prose { padding:1.1rem; max-height:400px; }
- .toolbar { padding:.4rem; }.toolbar button { padding:.3rem .4rem; }.editor-foot { font-size:.6rem; }.properties { gap:.6rem; }.properties input { font-size:.75rem; }
+ .properties { gap:.6rem; }.properties input { font-size:.75rem; }
  .overlay { padding:.7rem; }.modal { padding:1.1rem; max-height:94vh; }.modal-heading h2 { font-size:1.15rem; }.import-tools { flex-direction:column; gap:.5rem; }.import-tools select { max-width:100%; }.import-tools input { max-width:none; }
  .import-body { height:50vh; grid-template-columns:120px minmax(0,1fr); }.note-list { padding:.2rem; }.note-list button { padding:.6rem .4rem; }.note-list span { font-size:.7rem; }.note-list small { font-size:.6rem; overflow-wrap:anywhere; }.note-detail { padding:.8rem; }.note-detail>h2 { font-size:1.1rem; }.note-detail .prose { font-size:.75rem; }
  .modal-footer { flex-direction:column; align-items:stretch; gap:.6rem; }.modal-footer>span { font-size:.7rem; }
 }
 
 .editor.focused { position:fixed; inset:.75rem; z-index:1000; display:flex; flex-direction:column; gap:0; padding:1rem 1.4rem; box-shadow:0 12px 64px #0003; overflow:auto; }
-.focused .editor-heading { padding:.7rem 0 1rem; }
+.focused .editor-heading { padding:1rem clamp(.5rem,3vw,3rem) 1.2rem; }
 .focused .editor-heading .eyebrow { display:none; }
-.focused .title-input { padding:.2rem 0; font-size:1.6rem; }
+.focused .title-input { padding:.4rem 0; font-size:clamp(1.5rem,2vw,2rem); }
 .focused .editor-top { flex-shrink:0; }
 .focused .editor-layout { flex:1; min-height:0; }
-.focused .writing-area { display:flex; flex-direction:column; min-height:0; }
-.focused .panes { flex:1; min-height:0; overflow:hidden; }
-.focused .panes textarea { min-height:0; height:100%; resize:none; padding:1.5rem 2rem; }
-.focused .panes .prose { min-height:0; max-height:none; height:100%; padding:1.5rem 2rem; }
-.focused .toolbar,.focused .editor-foot { flex-shrink:0; }
+.focused .writing-area { display:flex; flex-direction:column; min-height:0; height:100%; }
 .focused .properties { overflow:auto; min-height:0; }
 .focused .editor-layout.with-settings { grid-template-columns:minmax(0,1fr) 220px; }
 .focused .properties { display:block; }
@@ -455,8 +438,5 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
  .focused .title-input { font-size:1.3rem; }
  .focused .editor-layout.with-settings { grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; }
  .focused .properties { max-height:25vh; }
- .focused .panes.split { grid-template-rows:minmax(0,1fr) minmax(0,1fr); }
- .focused .panes textarea,.focused .panes .prose { padding:1rem; font-size:.95rem; }
- .focused .editor-foot { flex-wrap:wrap; gap:.2rem; }
 }
 </style>
