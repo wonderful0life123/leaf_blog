@@ -10,6 +10,14 @@
 
 ## 1. 准备独立目录与账号
 
+### 已上线后的共享界面更新
+
+博客与 Studio 的前端是两份独立构建。修改导航、公共布局、样式或 `astro.config.mjs` 时，必须从同一提交执行 `pnpm build` 和 `pnpm run studio:build`，分别部署：普通 `dist/` 到博客公开目录，`studio-dist/` 到 Studio 配置的 `WONDER_STUDIO_WEB_DIR`（通常为 `/opt/wonder-studio/studio-dist`）。备份并整体切换各自的产物，绝不能将 `studio-dist` 复制到公开目录。
+
+只更新后台 `.mjs` 不会更新 Studio 页面中的导航。若两份前端不同步，Studio 可能仍显示旧菜单。Studio 与博客之间使用完整页面导航，普通博客页面之间继续使用 Swup；此设置也必须构建到两份产物里才生效。
+
+验收必须实际点击“博客 → 写作空间 → 主页”、“写作空间 → 归档 → 写作”，并检查手机菜单、浏览器前进/后退，以及编辑草稿离开前的保存保护。不要以 HTML 返回 200 代替点击验收。保留现有 OAuth 配置、服务器环境修复、私密数据库、备份和 Nginx 代理。
+
 建议布局：
 
 ```text

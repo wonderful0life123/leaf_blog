@@ -67,6 +67,13 @@ export default defineConfig({
 	integrations: [
 		swup({
 			theme: false,
+			// Studio is built and deployed separately; do not retain either app's navigation or editor state across this boundary.
+			ignore: (url) => {
+				const target = new URL(url, window.location.href);
+				return /^\/studio(?:\/|$)/.test(window.location.pathname)
+					|| /^\/studio(?:\/|$)/.test(target.pathname)
+					|| /^\/studio-auth(?:\/|$)/.test(target.pathname);
+			},
 			animationClass: "transition-swup-", // see https://swup.js.org/options/#animationselector
 			// the default value `transition-` cause transition delay
 			// when the Tailwind class `transition-all` is used
