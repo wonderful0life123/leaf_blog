@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import WritingEditor from './WritingEditor.svelte';
+  import StudioMenu from './StudioMenu.svelte';
   import {editorPortal} from './editor-portal.mjs';
   import {selectArticles,excerpt,displayDate} from './draft-list.mjs';
   import { marked } from 'marked';
@@ -246,19 +247,23 @@
       <section class="home">
         <div class="welcome card-base"><div><div class="eyebrow">记录技术、生活与灵感</div><h1>把想法写成文字</h1><p>记录一个想法，或者接着上次的探索。</p></div><div class="welcome-actions"><button on:click={showImport}>⌘ 从笔记导入</button><button class="primary" disabled={loading||busy} on:click={create}>＋ 写文章</button></div></div>
         <div class="list-heading"><h2>{filter==='trash'?'回收站':'你的文章'} <span>{filter==='trash'?trash.length:items.length}</span></h2><label class="search">⌕ <input aria-label="搜索文章" placeholder="搜索标题、正文、分类、标签…" bind:value={search}/></label></div>
-        <div class="tabs"><button class:selected={filter==='all'} on:click={()=>filter='all'}>全部文章</button><button class:selected={filter==='draft'} on:click={()=>filter='draft'}>草稿 <span>{draftCount}</span></button><button class:selected={filter==='published'} on:click={()=>filter='published'}>已发布</button><button class:selected={filter==='trash'} on:click={()=>filter='trash'}>回收站 <span>{trash.length}</span></button><select aria-label="文章排序" bind:value={sort}><option value="updated">最近修改</option><option value="created">最近创建</option><option value="title">标题排序</option></select><button disabled={loading||busy} on:click={async()=>{try{await refreshDrafts();toast('列表已刷新。');}catch(e){toast(e.message);}}}>刷新列表</button></div>
+        <div class="tabs"><button class:selected={filter==='all'} on:click={()=>filter='all'}>全部文章</button><button class:selected={filter==='draft'} on:click={()=>filter='draft'}>草稿 <span>{draftCount}</span></button><button class:selected={filter==='published'} on:click={()=>filter='published'}>已发布</button><button class:selected={filter==='trash'} on:click={()=>filter='trash'}>回收站 <span>{trash.length}</span></button><div class="list-tools"><div class="sort-menu"><StudioMenu label="文章排序" value={sort} options={[{value:'updated',label:'最近修改'},{value:'created',label:'最近创建'},{value:'title',label:'标题排序'}]} onSelect={value=>sort=value}/></div><button disabled={loading||busy} on:click={async()=>{try{await refreshDrafts();toast('列表已刷新。');}catch(e){toast(e.message);}}}>刷新列表</button></div></div>
         {#if filter==='trash'}<p class="trash-hint">草稿会一直保留在回收站，直到你主动彻底删除。已发布的博客原文不受影响。</p>{/if}
         <div class="article-table">
           {#each filtered as article (article.id)}
             <div class="managed-row card-base">
-              <button class="article-row" disabled={loading||busy||filter==='trash'} on:click={()=>edit(article)}>
-                <div class="article-name"><span class="file-icon">≡</span><div><strong>{article.title||'未命名文章'}</strong><small>{excerpt(article)}</small><small>{filter==='trash'?'移入回收站：':'更新：'}{displayDate(filter==='trash'?article.deletedAt:article.updatedAt)||'仓库文章'}{article.tags?' · '+article.tags:''}</small></div></div>
-                <span class="category">{article.category||'待分类'}</span><span class:published={article.status==='published'} class="status"><i></i>{filter==='trash'?'回收站':status(article)}</span>{#if filter!=='trash'}<span class="row-arrow">↗</span>{/if}
-              </button>
-              {#if article.persisted}<div class="row-actions" aria-label={(article.title||'未命名文章')+'的操作'}>
-                {#if filter==='trash'}<button disabled={busy} on:click={()=>manageDraft(article,'restore')}>恢复草稿</button><button class="danger" disabled={busy} on:click={()=>confirmAction(article,'purge')}>彻底删除</button>
-                {:else}<button disabled={busy} on:click={()=>duplicateDraft(article)}>复制草稿</button><button disabled={busy} on:click={()=>confirmAction(article,'trash')}>移入回收站</button>{/if}
-              </div>{/if}
+              <div class="row-heading">
+                <button class="article-title" disabled={loading||busy||filter==='trash'} on:click={()=>edit(article)}>{article.title||'未命名文章'}</button>
+                {#if filter!=='trash'}<button class="edit-link" disabled={loading||busy} on:click={()=>edit(article)}>继续编辑 <span aria-hidden="true">↗</span></button>{/if}
+              </div>
+              <p class="article-excerpt">{excerpt(article)}</p>
+              <div class="row-footer">
+                <div class="row-meta"><span class="category">{article.category||'待分类'}</span><span class="row-date">{article.persisted?(filter==='trash'?'删除于 ':'更新于 ')+displayDate(filter==='trash'?article.deletedAt:article.updatedAt):'仓库文章'}</span><span class:published={article.status==='published'} class="status"><i></i>{filter==='trash'?'回收站':status(article)}</span></div>
+                {#if article.persisted}<div class="row-actions" aria-label={(article.title||'未命名文章')+'的操作'}>
+                  {#if filter==='trash'}<button class="restore" disabled={busy} on:click={()=>manageDraft(article,'restore')}>恢复草稿</button>{/if}
+                  <StudioMenu label={(article.title||'未命名文章')+'的更多操作'} compact disabled={busy} options={filter==='trash'?[{value:'purge',label:'彻底删除',danger:true}]:[{value:'duplicate',label:'复制草稿'},{value:'trash',label:'移入回收站',danger:true}]} onSelect={action=>action==='duplicate'?duplicateDraft(article):confirmAction(article,action)}/>
+                </div>{/if}
+              </div>
             </div>
           {/each}
           {#if !filtered.length}<div class="empty">{filter==='trash'?'回收站中没有匹配的草稿。':'没有找到文章。换个关键词，或开始写一篇新的。'}</div>{/if}
@@ -295,7 +300,8 @@
 {/if}
 
 <style>
-.managed-row{overflow:hidden}.managed-row .article-row{border:0;border-radius:0}.managed-row .article-row:disabled{opacity:1}.row-actions{display:flex;justify-content:flex-end;gap:.6rem;padding:.5rem 1.4rem .9rem}.row-actions button{font-size:.75rem;padding:.4rem .7rem}.danger{color:#b83d45}.trash-hint{font-size:.85rem;color:var(--content-meta);padding:.7rem 0}.tabs{flex-wrap:wrap}.tabs select{margin-left:auto;font-size:.8rem}.tabs>button:last-child{font-size:.8rem}
+.danger{color:#b83d45}.trash-hint{font-size:.85rem;color:var(--content-meta);padding:.7rem 0}.tabs{flex-wrap:wrap}.list-tools{display:flex;align-items:center;gap:1rem;margin-left:auto}.list-tools>button{font-size:.8rem}
+
 
 .login-panel { padding:3rem; color:var(--text-90); }
 .login-panel h1 { font-size:2rem; font-weight:700; margin:1rem 0; }
@@ -342,22 +348,23 @@ h1,h2,h3,h4,p { margin:0; }
 .tabs button { background:transparent; border:0; border-bottom:2px solid transparent; border-radius:0; padding:.65rem 0; font-size:.85rem; color:var(--content-meta); }
 .tabs button.selected { color:var(--btn-content); border-color:var(--primary); }
 .tabs button span { font-size:.7rem; margin-left:.3rem; }
-.sort-label { margin-left:auto; color:var(--content-meta); font-size:.75rem; opacity:.7; }
-.article-table { display:flex; flex-direction:column; gap:1rem; }
-.table-head,.file-icon { display:none; }
-.article-row { width:100%; display:grid; grid-template-columns:minmax(0,1fr) auto 3rem; gap:.6rem 1.1rem; text-align:left; padding:1.6rem 1.7rem; background:var(--card-bg); position:relative; color:var(--studio-text); }
-.article-row:hover { background:var(--card-bg); }
-.article-row::before { content:''; position:absolute; top:2rem; left:1.1rem; height:1rem; width:4px; border-radius:4px; background:var(--primary); }
-.article-name { grid-column:1/3; min-width:0; padding-left:.5rem; }
-.article-name strong { font-size:1.3rem; font-weight:700; line-height:1.5; }
-.article-name small { display:block; color:var(--content-meta); font-size:.88rem; line-height:1.8; margin:.6rem 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.category { color:var(--btn-content); background:var(--btn-regular-bg); font-size:.8rem; border-radius:.3rem; padding:.15rem .5rem; width:fit-content; max-width:100%; overflow-wrap:anywhere; }
-.article-row>.category { margin-left:.5rem; }
-.status { font-size:.8rem; color:var(--content-meta); display:flex; align-items:center; gap:.4rem; justify-self:end; }
-.status i,.save-status i { display:inline-block; width:5px; height:5px; background:currentColor; border-radius:50%; }
-.status.published { color:var(--btn-content); }
-.row-arrow { grid-column:3; grid-row:1/3; display:grid; place-items:center; align-self:stretch; background:var(--btn-regular-bg); color:var(--btn-content); border-radius:.7rem; font-size:1.4rem; }
-.article-row:hover .row-arrow { background:var(--btn-regular-bg-hover); }
+.article-table { display:flex; flex-direction:column; gap:.75rem; }
+.managed-row { position:relative; overflow:visible; padding:1.15rem 1.4rem 1rem; border:1px solid transparent; transition:border-color .15s; }
+.managed-row:hover { border-color:var(--line-divider); }
+.managed-row:focus-within { z-index:2; }
+.row-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
+.article-title { position:relative; min-width:0; padding:0 0 0 .9rem; border:0; border-radius:0; background:transparent; text-align:left; font-size:1.15rem; font-weight:700; line-height:1.5; color:var(--studio-text); overflow-wrap:anywhere; }
+.article-title::before { content:''; position:absolute; left:0; top:.35rem; height:1rem; width:4px; border-radius:4px; background:var(--primary); }
+.article-title:hover { background:transparent; color:var(--primary); }.article-title:disabled{opacity:1;color:var(--studio-text)}
+.edit-link { flex-shrink:0; padding:.25rem .45rem; border:0; background:transparent; font-size:.78rem; }.edit-link span { margin-left:.3rem; }
+.article-excerpt { margin:.45rem 0 .75rem .9rem; color:var(--content-meta); font-size:.85rem; line-height:1.7; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
+.row-footer { display:flex; align-items:center; justify-content:space-between; gap:.7rem; margin-left:.9rem; }
+.row-meta { display:flex; align-items:center; flex-wrap:wrap; gap:.4rem .8rem; min-width:0; }
+.category { color:var(--btn-content); background:var(--btn-regular-bg); font-size:.75rem; border-radius:.3rem; padding:.1rem .45rem; width:fit-content; max-width:100%; overflow-wrap:anywhere; }
+.row-date,.status { font-size:.75rem; color:var(--content-meta); }.status { display:flex; align-items:center; gap:.35rem; }
+.status i,.save-status i { display:inline-block; width:5px; height:5px; background:currentColor; border-radius:50%; }.status.published{color:var(--btn-content)}
+.row-actions { display:flex; align-items:center; gap:.3rem; flex-shrink:0; }.row-actions .restore{padding:.35rem .6rem;font-size:.78rem}
+
 footer { display:flex; justify-content:space-between; font-size:.75rem; color:var(--content-meta); padding:1.5rem .7rem; opacity:.6; }
 .editor { padding:1.5rem; overflow:visible; color:var(--studio-text); }
 .editor-top { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
@@ -429,15 +436,16 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
  .editor-layout.with-settings { grid-template-columns:minmax(0,1fr); }
  .properties { display:grid; grid-template-columns:1fr 1fr; gap:0 1rem; }
  .properties h3 { grid-column:1/-1; }.properties .property-divider,.properties h4,.properties>p,.properties .private-note,.properties>button { display:none; }
- .article-name strong { font-size:1.2rem; }
+
 }
 @media(max-width:700px) {
  .studio-nav { gap:.35rem; padding:.6rem; }.studio-nav button { font-size:.75rem; padding:.4rem .5rem; }.studio-nav .account { display:block; }
  .demo-strip { font-size:.7rem; padding:.7rem 1rem; align-items:flex-start; }.demo-strip button { display:none; }
  .welcome { flex-direction:column; padding:1.5rem; gap:1rem; }.welcome h1 { font-size:1.6rem; }.welcome-actions { flex-direction:row; width:100%; }.welcome-actions button { flex:1; font-size:.85rem; }
  .list-heading { padding:0 .3rem; }.list-heading h2 { font-size:1.1rem; white-space:nowrap; }.search { min-width:0; }.search input { width:100%; max-width:135px; }
- .tabs { margin-left:.4rem; gap:1rem; }.sort-label { display:none; }
- .article-row { padding:1.3rem 1.2rem; grid-template-columns:minmax(0,1fr) auto 2.2rem; gap:.4rem; }.article-row::before { left:.7rem; top:1.7rem; }.article-name strong { font-size:1.1rem; }.article-name small { font-size:.8rem; }.category,.status { font-size:.7rem; }
+ .tabs { margin-left:.4rem; gap:.5rem 1rem; }.list-tools{width:100%;justify-content:flex-end;gap:1rem}
+ .managed-row { padding:1rem .9rem .75rem; }.row-heading{gap:.5rem}.article-title{font-size:1.05rem}.edit-link{font-size:.72rem;white-space:nowrap;padding:.25rem 0}.article-excerpt{font-size:.8rem;margin-bottom:.6rem}.row-footer{gap:.3rem}.row-meta{gap:.4rem .6rem}.row-date,.status,.category{font-size:.7rem}.row-date{flex-basis:100%;order:3}.row-actions{align-self:flex-end}
+
  footer { font-size:.7rem; }footer span { display:none; }
  .editor { padding:1rem; }.editor-top { gap:.5rem; }.save-status { font-size:.65rem; }.editor-actions { width:100%; justify-content:flex-end; }.editor-heading { padding:1.2rem 0; }.title-input { font-size:1.5rem; }
  .properties { gap:.6rem; }.properties input { font-size:.75rem; }
