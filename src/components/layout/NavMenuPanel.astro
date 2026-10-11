@@ -63,6 +63,7 @@ const processedLinks = Astro.props.links.map((link: NavBarLink) => ({
                     hover:bg-(--btn-plain-bg-hover) active:bg-(--btn-plain-bg-active) transition
                 "
                    target={link.external ? "_blank" : null}
+                   data-no-swup={link.reload || undefined}
                 >
                     <div class="flex items-center transition text-black/75 dark:text-white/75 font-bold group-hover:text-(--primary) group-active:text-(--primary)">
 						{link.icon && <Icon name={link.icon} is:inline class="text-[1.1rem] mr-2" />}

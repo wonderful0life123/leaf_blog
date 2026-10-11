@@ -95,6 +95,13 @@ const getDynamicNavBarConfig = (): NavBarConfig => {
 		],
 	});
 
+	links.push({
+		name: "写作",
+		url: "/studio/",
+		icon: "material-symbols:edit-square-outline-rounded",
+		reload: true,
+	});
+
 	// 仅返回链接，其它导航搜索相关配置在模块顶层常量中独立导出
 	return { links } as NavBarConfig;
 };
