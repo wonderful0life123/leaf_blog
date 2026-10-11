@@ -9,14 +9,15 @@
   import {closeBrackets, closeBracketsKeymap} from '@codemirror/autocomplete';
   import {search, searchKeymap, openSearchPanel} from '@codemirror/search';
   import {tags} from '@lezer/highlight';
-  import {outlineFor, formatEdit, imageEdit, writingPreferences} from './editor-tools.mjs';
+  import {outlineFor, formatEdit, imageEdit, writingPreferences, splitRatio} from './editor-tools.mjs';
   export let value='';
   export let preview='';
   export let disabled=false;
   export let uploading=false;
   export let onChange=()=>{};
   export let onImages=()=>{};
-  let host,view,previewPane;
+  let host,view,previewPane,panes;
+  let verticalSplit=false,dragPointer=null,dragStartRatio=50;
   let mode='write',preferencesOpen=false,prefs=writingPreferences(),language='python';
   let headings=[],active=0,line=1,column=1,canUndo=false,canRedo=false;
   const editable=new Compartment(),appearance=new Compartment();
@@ -47,6 +48,36 @@
     view?.dispatch({effects:appearance.reconfigure(theme())});
   }
   async function setMode(next){mode=next;await tick();view?.requestMeasure();}
+  function resizeSplit(value){prefs={...prefs,splitRatio:splitRatio(value)};view?.requestMeasure();}
+  function startResize(event){
+    if(event.button!==0)return;
+    event.preventDefault();event.currentTarget.focus();
+    dragPointer=event.pointerId;dragStartRatio=prefs.splitRatio;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveResize(event){
+    if(dragPointer!==event.pointerId)return;
+    const rect=panes.getBoundingClientRect(),grip=event.currentTarget.getBoundingClientRect();
+    const size=verticalSplit?rect.height-grip.height:rect.width-grip.width;
+    if(size<=0)return;
+    const offset=verticalSplit?event.clientY-rect.top-grip.height/2:event.clientX-rect.left-grip.width/2;
+    resizeSplit(offset/size*100);
+  }
+  function endResize(event){
+    if(dragPointer!==event.pointerId)return;
+    dragPointer=null;
+    if(event.type==='pointercancel')resizeSplit(dragStartRatio);
+    storePreferences();
+    if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+  function resetSplit(){resizeSplit(50);storePreferences();}
+  function splitKey(event){
+    const decrease=verticalSplit?'ArrowUp':'ArrowLeft',increase=verticalSplit?'ArrowDown':'ArrowRight';
+    if(![decrease,increase,'Home','End','Enter'].includes(event.key))return;
+    event.preventDefault();
+    resizeSplit(event.key==='Home'?25:event.key==='End'?75:event.key==='Enter'?50:prefs.splitRatio+(event.key===decrease?-5:5));
+    storePreferences();
+  }
   function position(){
     const pos=view.state.selection.main.head,l=view.state.doc.lineAt(pos);
     line=l.number;column=pos-l.from+1;
@@ -83,6 +114,9 @@
   const zh={'Find':'查找','Replace':'替换','next':'下一处','previous':'上一处','all':'全选','match case':'区分大小写','regexp':'正则表达式','by word':'整词','replace':'替换','replace all':'全部替换','close':'关闭','Go to line':'跳转到行','go':'跳转'};
   onMount(()=>{
     try{prefs=writingPreferences(JSON.parse(localStorage.getItem(storageKey)||'{}'));}catch{}
+    const splitMedia=window.matchMedia('(max-width:700px)');
+    const updateOrientation=()=>{verticalSplit=splitMedia.matches;};
+    updateOrientation();splitMedia.addEventListener('change',updateOrientation);
     view=new EditorView({parent:host,state:EditorState.create({doc:value,extensions:[
       history(),drawSelection(),highlightActiveLine(),EditorView.lineWrapping,
       markdown({base:markdownLanguage,codeLanguages:languages}),bracketMatching(),closeBrackets(),indentUnit.of('  '),
@@ -104,7 +138,7 @@
         if(update.docChanged||update.selectionSet)position();
       })
     ]})});
-    position();return()=>{view.destroy();view=null;};
+    position();return()=>{splitMedia.removeEventListener('change',updateOrientation);view.destroy();view=null;};
   });
 </script>
 
@@ -159,8 +193,11 @@
         <div class="outline-tip">先记录，再打磨。<br/>每一个小节都算进展。</div>
       </aside>
     {/if}
-    <div class="document-panes" class:split={mode==='split'} class:preview-only={mode==='preview'}>
+    <div class="document-panes" class:split={mode==='split'} class:resizing={dragPointer!==null} class:preview-only={mode==='preview'} bind:this={panes} style={`--source-share:${prefs.splitRatio}fr;--preview-share:${100-prefs.splitRatio}fr`}>
       <div class="source-pane" class:hidden={mode==='preview'} bind:this={host}></div>
+      {#if mode==='split'}
+        <div class="split-handle" role="separator" tabindex="0" aria-label="调整编辑与预览比例" aria-orientation={verticalSplit?'horizontal':'vertical'} aria-valuemin="25" aria-valuemax="75" aria-valuenow={Math.round(prefs.splitRatio)} aria-valuetext={`编辑区 ${Math.round(prefs.splitRatio)}%，预览区 ${100-Math.round(prefs.splitRatio)}%`} title="拖动调整比例；双击或按 Enter 恢复均分" on:pointerdown={startResize} on:pointermove={moveResize} on:pointerup={endResize} on:pointercancel={endResize} on:lostpointercapture={endResize} on:keydown={splitKey} on:dblclick={resetSplit}></div>
+      {/if}
       {#if mode!=='write'}<article class="writing-preview" class:wide={prefs.wide} bind:this={previewPane} aria-label="文章预览">{#if value}<div>{@html preview}</div>{:else}<p class="preview-hint">你的文字，会在这里慢慢成形。</p>{/if}</article>{/if}
     </div>
   </div>
@@ -179,10 +216,10 @@ button:disabled{opacity:.35;cursor:not-allowed}button[aria-pressed=true]{color:v
 .format-bar{border-bottom:1px solid var(--line-divider);padding:7px 12px;overflow-x:auto;flex-shrink:0}.format-bar fieldset{border:0;padding:0;margin:0;display:flex;align-items:center;gap:2px;min-width:max-content}.format-bar button{display:flex;align-items:center;gap:5px}.format-bar select{max-width:100px}.divider{height:18px;border-left:1px solid var(--line-divider);margin:0 5px}.image-upload{white-space:nowrap;display:flex;align-items:center;gap:5px}.image-upload input{width:1px;height:1px;opacity:0;position:absolute}
 .writing-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr)}.writing-body.with-outline{grid-template-columns:190px minmax(0,1fr)}
 .outline{padding:24px 12px;background:color-mix(in srgb,var(--page-bg) 45%,var(--card-bg));border-right:1px solid var(--line-divider);overflow:auto;min-height:0}.outline-title{font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--content-meta);padding:0 12px 16px;display:flex;justify-content:space-between}.outline-title small{font-weight:400}.outline nav{display:flex;flex-direction:column;gap:4px}.outline button{text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;line-height:1.6;padding:8px 12px}.outline button.current{color:var(--btn-content);background:var(--btn-regular-bg);font-weight:600}.outline p,.outline-tip{font-size:12px;color:var(--content-meta);line-height:2;padding:12px;opacity:.75}.outline-tip{margin-top:32px;border-top:1px solid var(--line-divider)}
-.document-panes{display:grid;grid-template-columns:minmax(0,1fr);min-height:0;min-width:0;overflow:hidden}.document-panes.split{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.source-pane{min-height:0;min-width:0;height:100%;overflow:hidden}.source-pane.hidden{display:none}.split .source-pane{border-right:1px solid var(--line-divider)}
+.document-panes{display:grid;grid-template-columns:minmax(0,1fr);min-height:0;min-width:0;overflow:hidden}.document-panes.split{grid-template-columns:minmax(0,var(--source-share)) 12px minmax(0,var(--preview-share))}.source-pane{min-height:0;min-width:0;height:100%;overflow:hidden}.source-pane.hidden{display:none}.split-handle{background:var(--page-bg);border-inline:1px solid var(--line-divider);cursor:col-resize;touch-action:none;display:flex;align-items:center;justify-content:center;outline:none}.split-handle::after{content:"";width:3px;height:36px;border-radius:3px;background:var(--content-meta);opacity:.4}.split-handle:hover,.split-handle:focus-visible,.resizing .split-handle{background:var(--btn-regular-bg-hover)}.split-handle:focus-visible{box-shadow:inset 0 0 0 2px var(--primary)}.resizing{user-select:none}.resizing .source-pane,.resizing .writing-preview{pointer-events:none}
 .writing-preview{overflow:auto;min-width:0;padding:28px clamp(18px,4vw,56px) 120px;font-size:var(--writing-font);line-height:var(--writing-leading);overflow-wrap:anywhere}.writing-preview>div{max-width:930px;margin:auto}.writing-preview.wide>div{max-width:none}.preview-hint{color:var(--content-meta)}
 .writing-preview :global(h1),.writing-preview :global(h2),.writing-preview :global(h3){font-weight:700;line-height:1.5;scroll-margin-top:24px}.writing-preview :global(h1){font-size:1.8em;margin:0 0 1em}.writing-preview :global(h2){font-size:1.4em;margin:1.5em 0 .8em;border-bottom:1px solid var(--line-divider);padding-bottom:.4em}.writing-preview :global(h3){font-size:1.15em;margin:1.2em 0 .7em}.writing-preview :global(p){margin:.8em 0}.writing-preview :global(ul){list-style:disc;padding-left:1.6em}.writing-preview :global(ol){list-style:decimal;padding-left:1.6em}.writing-preview :global(blockquote){border-left:3px solid var(--primary);padding:.3em 1em;background:var(--btn-regular-bg);margin:1em 0}.writing-preview :global(pre){background:var(--codeblock-bg);color:#e1e8e5;padding:18px;overflow:auto;border-radius:8px;margin:1em 0}.writing-preview :global(code){font-family:'JetBrains Mono Variable',monospace;font-size:.88em;background:var(--inline-code-bg);color:var(--inline-code-color);padding:.1em .3em;border-radius:4px}.writing-preview :global(pre code){color:inherit;background:none;padding:0}.writing-preview :global(img){max-width:100%;height:auto;border-radius:8px}.writing-preview :global(table){display:block;overflow:auto;border-collapse:collapse;margin:1em 0}.writing-preview :global(th),.writing-preview :global(td){border:1px solid var(--line-divider);padding:.4em .8em}.writing-preview :global(a){color:var(--btn-content);text-decoration:underline}.writing-preview :global(.katex-display){overflow:auto}
 .writing-status{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:1px solid var(--line-divider);padding:10px 18px;font-size:11px;color:var(--content-meta)}
 @media(max-width:1100px){.format-bar button span{display:none}.keyboard-hint{display:none}.writing-body.with-outline{grid-template-columns:160px minmax(0,1fr)}}
-@media(max-width:700px){.writing-workbench{min-height:320px}.writing-controls{padding:8px;gap:5px}.view-modes button{min-width:46px;padding:6px}.reading-controls{gap:0}.reading-controls button{font-size:12px;padding:6px}.format-bar{padding:5px}.writing-body.with-outline{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}.outline{padding:8px;max-height:140px;border-right:0;border-bottom:1px solid var(--line-divider)}.outline-title{padding:4px 8px}.outline p{padding:4px 8px;margin:0}.outline p br,.outline-tip{display:none}.outline nav{display:flex;flex-direction:row;overflow-x:auto}.outline button{width:auto;max-width:220px;flex-shrink:0;padding-left:10px!important}.document-panes.split{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1fr)}.split .source-pane{border-right:0;border-bottom:1px solid var(--line-divider)}.writing-preview{padding:18px}.preferences{gap:8px;padding:8px}.preferences span{display:none}.writing-status{font-size:10px;padding:8px;gap:5px}.writing-status>span:last-child{display:none}}
+@media(max-width:700px){.writing-workbench{min-height:320px}.writing-controls{padding:8px;gap:5px}.view-modes button{min-width:46px;padding:6px}.reading-controls{gap:0}.reading-controls button{font-size:12px;padding:6px}.format-bar{padding:5px}.writing-body.with-outline{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}.outline{padding:8px;max-height:140px;border-right:0;border-bottom:1px solid var(--line-divider)}.outline-title{padding:4px 8px}.outline p{padding:4px 8px;margin:0}.outline p br,.outline-tip{display:none}.outline nav{display:flex;flex-direction:row;overflow-x:auto}.outline button{width:auto;max-width:220px;flex-shrink:0;padding-left:10px!important}.document-panes.split{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,var(--source-share)) 16px minmax(0,var(--preview-share))}.split-handle{cursor:row-resize;border-inline:0;border-block:1px solid var(--line-divider)}.split-handle::after{width:36px;height:3px}.writing-preview{padding:18px}.preferences{gap:8px;padding:8px}.preferences span{display:none}.writing-status{font-size:10px;padding:8px;gap:5px}.writing-status>span:last-child{display:none}}
 </style>

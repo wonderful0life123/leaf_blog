@@ -6,7 +6,7 @@
 
 1. 在独立 checkout 拉取 `feat/wonder-studio-private-workspace`，核对交接的提交哈希。保留线上 OAuth/网络修复，不覆盖运行中的后端代码或配置。
 2. 使用 Node.js 22.13+ 和项目指定的 pnpm 9.14.4，执行 `pnpm install --frozen-lockfile`。本次新增了 CodeMirror 依赖，不能沿用缺少新依赖的旧 node_modules。
-3. 执行 `pnpm run studio:test`、`pnpm build`、`pnpm run studio:build`。本地验收为 29 项测试全部通过，两份构建成功。
+3. 执行 `pnpm run studio:test`、`pnpm build`、`pnpm run studio:build`。当前包含滚动锁释放和分屏偏好的回归测试。
 4. 按现有备份及原子切换流程，将普通 `dist` 和 `studio-dist` 分别部署到既有博客目录和 Studio 前端目录；不得混放。该前端更新不需要重启 Studio 服务。
 5. 保留 OAuth 环境文件、草稿/图片/备份、Nginx、服务器登录修复。不要修改 `/root/Firefly`、合并 master 或启用旧自动部署 timer。
 
@@ -20,5 +20,7 @@
 - 在正文中间或标题前上传、粘贴图片，图片与前后正文保持分段；刷新后图片可见。图片仍保存在原草稿存储中。
 - 桌面和手机宽度下，正文可滚动、工具栏可横向滚动、分屏可用。实际手机输入法及软键盘需在设备上另行验收。
 - 从 Studio 前往主页/归档再返回，“写作”入口持续存在。
+- 已保存草稿直接返回文章列表，无需刷新即可向下滚动；反复进入和退出专注也正常。
+- 标题区上下留白缩小；分屏分隔条可拖动（电脑左右、手机上下），刷新再打开分屏后比例保留；双击恢复均分。
 
 出问题时恢复部署前备份的前端产物即可；本次无需数据库迁移或回滚。

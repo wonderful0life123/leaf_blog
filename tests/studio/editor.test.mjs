@@ -41,8 +41,8 @@ test('Markdown 回车延续编号和任务列表，空列表项可退出',()=>{
  }
 });
 test('无效排版偏好回退到可读默认值',()=>{
- assert.deepEqual(writingPreferences(null),{fontSize:18,lineHeight:1.9,wide:false,outline:true});
- assert.deepEqual(writingPreferences({fontSize:200,lineHeight:0,wide:true,outline:false}),{fontSize:18,lineHeight:1.9,wide:true,outline:false});
+ assert.deepEqual(writingPreferences(null),{fontSize:18,lineHeight:1.9,wide:false,outline:true,splitRatio:50});
+ assert.deepEqual(writingPreferences({fontSize:200,lineHeight:0,wide:true,outline:false,splitRatio:50}),{fontSize:18,lineHeight:1.9,wide:true,outline:false,splitRatio:50});
 });
 
 test('图片插入保留相邻标题和段落，不重复增加空行',()=>{
@@ -51,4 +51,12 @@ test('图片插入保留相邻标题和段落，不重复增加空行',()=>{
   const state=EditorState.create({doc,selection:{anchor:cursor}});
   assert.equal(state.update(imageEdit(state,image)).state.doc.toString(),expected);
  }
+});
+
+test('分屏偏好兼容旧设置并限制两侧最小空间',()=>{
+ assert.equal(writingPreferences({}).splitRatio,50);
+ assert.equal(writingPreferences({splitRatio:63}).splitRatio,63);
+ assert.equal(writingPreferences({splitRatio:0}).splitRatio,25);
+ assert.equal(writingPreferences({splitRatio:100}).splitRatio,75);
+ assert.equal(writingPreferences({splitRatio:'bad'}).splitRatio,50);
 });

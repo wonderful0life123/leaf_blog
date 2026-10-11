@@ -39,8 +39,10 @@ export function formatEdit(state,kind,language='python') {
 }
 
 export function writingPreferences(raw={}) {
-  return {fontSize:[16,18,20,22].includes(raw?.fontSize)?raw.fontSize:18,lineHeight:[1.6,1.9,2.2].includes(raw?.lineHeight)?raw.lineHeight:1.9,wide:raw?.wide===true,outline:raw?.outline!==false};
+  return {fontSize:[16,18,20,22].includes(raw?.fontSize)?raw.fontSize:18,lineHeight:[1.6,1.9,2.2].includes(raw?.lineHeight)?raw.lineHeight:1.9,wide:raw?.wide===true,outline:raw?.outline!==false,splitRatio:splitRatio(raw?.splitRatio)};
 }
+
+export function splitRatio(value){return Number.isFinite(value)?Math.min(75,Math.max(25,value)):50;}
 
 export function imageEdit(state,text) {
   const {from,to}=state.selection.main;

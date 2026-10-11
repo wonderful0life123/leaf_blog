@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import WritingEditor from './WritingEditor.svelte';
+  import {editorPortal} from './editor-portal.mjs';
   import { marked } from 'marked';
   import katex from 'katex';
   import 'katex/dist/katex.min.css';
@@ -27,23 +28,6 @@
   $: preview = current ? markdown(current.body,current) : '';
   $: notePreview = selected ? markdown(selected.body,selected) : '';
   function portal(node) { document.body.appendChild(node);return {destroy(){node.remove();}}; }
-  function editorPortal(node, enabled) {
-    const marker=document.createComment('writing-editor');
-    node.before(marker);
-    let previousOverflow;
-    function update(active) {
-      if(active && node.parentNode!==document.body) {
-        previousOverflow=document.body.style.overflow;
-        document.body.style.overflow='hidden';
-        document.body.appendChild(node);
-      } else if(!active && node.parentNode===document.body) {
-        marker.after(node);
-        document.body.style.overflow=previousOverflow??'';
-      }
-    }
-    update(enabled);
-    return {update,destroy(){if(node.parentNode===document.body){document.body.style.overflow=previousOverflow??'';node.remove();}marker.remove();}};
-  }
   function toast(text) { notice=text; clearTimeout(toastTimer); toastTimer=setTimeout(()=>notice='',4500); }
   function keydown(e) { if(e.key==='Escape')dialog='';if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();persist();} }
   async function request(url,options={}) {
@@ -337,7 +321,7 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
 .save-status { font-size:.7rem; color:var(--content-meta); display:flex; align-items:center; gap:.4rem; }
 .editor-actions { display:flex; gap:.5rem; margin-left:auto; }
 .editor-actions button { font-size:.8rem; }
-.editor-heading { padding:1.9rem 0 1.5rem; }
+.editor-heading { padding:.6rem 0 .7rem; }
 .small-status { font-size:.75rem; padding:.2rem .5rem; margin-left:.6rem; background:var(--btn-regular-bg); border-radius:.3rem; }
 .title-input { border:0; width:100%; border-radius:0; padding:.8rem 0 .3rem; background:transparent; font-size:1.8rem; font-weight:700; }
 .source-line { font-size:.75rem; color:var(--content-meta); margin-top:.5rem; }
@@ -419,9 +403,9 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
 }
 
 .editor.focused { position:fixed; inset:.75rem; z-index:1000; display:flex; flex-direction:column; gap:0; padding:1rem 1.4rem; box-shadow:0 12px 64px #0003; overflow:auto; }
-.focused .editor-heading { padding:1rem clamp(.5rem,3vw,3rem) 1.2rem; }
+.focused .editor-heading { padding:.35rem .5rem .55rem; flex-shrink:0; }
 .focused .editor-heading .eyebrow { display:none; }
-.focused .title-input { padding:.4rem 0; font-size:clamp(1.5rem,2vw,2rem); }
+.focused .title-input { padding:.2rem 0; font-size:clamp(1.4rem,1.8vw,1.75rem); line-height:1.35; }
 .focused .editor-top { flex-shrink:0; }
 .focused .editor-layout { flex:1; min-height:0; }
 .focused .writing-area { display:flex; flex-direction:column; min-height:0; height:100%; }
