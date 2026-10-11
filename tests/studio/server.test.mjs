@@ -9,7 +9,7 @@ import {createHash} from 'node:crypto';
 import {createStudioServer} from '../../scripts/studio/server.mjs';
 import {serverConfig} from '../../scripts/studio/config.mjs';
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV8sAAAAASUVORK5CYII=','base64');
-async function setup(t) {
+async function setup(t,overrides={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'wonder-auth-test-'));
   for(const d of ['web/studio','web/studio-static','posts','notes'])fs.mkdirSync(path.join(root,d),{recursive:true});
   fs.writeFileSync(path.join(root,'web/studio/index.html'),'<html>登录</html>');
@@ -23,7 +23,7 @@ async function setup(t) {
     if(url==='https://github.com/login/oauth/access_token')return {ok:true,json:async()=>({access_token:'mock-token'})};
     if(url==='https://api.github.com/user')return {ok:true,json:async()=>profile};
     throw Error('Unexpected external request');
-  }};
+  },...overrides};
   let server=createStudioServer(config,authOptions);
   async function listen(){server.listen(0,'127.0.0.1');await once(server,'listening');}
   await listen();
@@ -100,4 +100,27 @@ test('登录上游失败返回可重试页面，会话数据库不保存 GitHub 
   const denied=await f.request('/studio-auth/callback/?error=access_denied&state='+flow.url.searchParams.get('state'),{headers:{Cookie:flow.cookie}});
   assert.equal(denied.headers.location,'/studio/?loginError=expired');
   f.setUnavailable();const failed=await f.finish(await f.begin());assert.equal(failed.headers.location,'/studio/?loginError=unavailable');
+});
+
+test('OAuth 故障日志区分失败阶段且不泄露凭据或上游原文',async t=>{
+  const cases=[
+    {name:'secret mismatch',stage:'token_exchange',reason:'incorrect_client_credentials',status:200,fetcher:async()=>({ok:true,status:200,json:async()=>({error:'incorrect_client_credentials',error_description:'SECRET_UPSTREAM_TEXT'})})},
+    {name:'network timeout',stage:'token_exchange',reason:'network_error',networkCode:'UND_ERR_CONNECT_TIMEOUT',fetcher:async()=>{throw Object.assign(new Error('SECRET_UPSTREAM_TEXT'),{cause:{code:'UND_ERR_CONNECT_TIMEOUT'}});}},
+    {name:'identity denied',stage:'user_profile',reason:'http_error',status:401,fetcher:async url=>url.includes('/access_token')?{ok:true,status:200,json:async()=>({access_token:'SECRET_UPSTREAM_TEXT'})}:{ok:false,status:401}},
+    {name:'invalid token response',stage:'token_exchange',reason:'invalid_json',status:200,fetcher:async()=>({ok:true,status:200,json:async()=>{throw new SyntaxError('SECRET_UPSTREAM_TEXT');}})},
+    {name:'unknown provider error',stage:'token_exchange',reason:'missing_access_token',status:200,fetcher:async()=>({ok:true,status:200,json:async()=>({error:'SECRET_UPSTREAM_TEXT'})})},
+    {name:'invalid profile',stage:'user_profile',reason:'invalid_profile',status:200,fetcher:async url=>({ok:true,status:200,json:async()=>url.includes('/access_token')?{access_token:'SECRET_UPSTREAM_TEXT'}:{message:'SECRET_UPSTREAM_TEXT'}})},
+  ];
+  for(const c of cases)await t.test(c.name,async t=>{
+    const reports=[],f=await setup(t,{fetcher:c.fetcher,reportFailure:event=>reports.push(event)});
+    const result=await f.finish(await f.begin());
+    assert.equal(result.headers.location,'/studio/?loginError=unavailable');
+    assert.equal(reports.length,1);
+    assert.equal(reports[0].stage,c.stage);assert.equal(reports[0].reason,c.reason);
+    if(c.status)assert.equal(reports[0].status,c.status);
+    if(c.networkCode)assert.equal(reports[0].networkCode,c.networkCode);
+    const output=JSON.stringify(reports)+result.text+JSON.stringify(result.headers);
+    for(const secret of ['SECRET_UPSTREAM_TEXT','test-secret','one-time-code'])assert(!output.includes(secret));
+    assert(!result.headers['set-cookie'].some(c=>c.startsWith('__Host-wonder_session=')));
+  });
 });

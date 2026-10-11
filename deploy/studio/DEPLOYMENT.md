@@ -100,3 +100,25 @@ npm run studio:build
 
 - GitHub 官方 OAuth 流程（state、PKCE、回调及每次登录重新核实身份）：<https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps>
 - GitHub OAuth App 创建：<https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app>
+## 8. 登录回跳 `loginError=unavailable` 的排查
+
+此错误发生在服务端交换 OAuth token 或读取 GitHub 用户信息时。不能仅凭该错误认定是网络、密钥或账号权限问题。
+
+更新 `scripts/studio/auth.mjs` 并重启 `wonder-studio.service` 后，让用户从 `/studio/` 发起一次新的登录。旧授权回调不可重放。只提取诊断日志：
+
+```sh
+journalctl -u wonder-studio.service --since '10 minutes ago' --no-pager | grep -F '[studio] OAuth upstream failure'
+```
+
+日志仅包含阶段、HTTP 状态和白名单错误标签，不包含令牌、授权码、state、Cookie、Client Secret、请求或响应正文。
+
+| 日志字段 | 下一步 |
+| --- | --- |
+| `stage=token_exchange`, `reason=incorrect_client_credentials` | 在服务器本机核对 Client ID 和 Secret 是否属于同一个 OAuth App；修改环境文件后重启服务，不输出其值。 |
+| `reason=redirect_uri_mismatch` | 核对 GitHub 应用回调地址与 `https://wonder-ai.info/studio-auth/callback/` 完全一致。 |
+| `reason=bad_verification_code` | 重新从登录入口授权，排查重复回调及 PKCE 配置；不重放旧 code。 |
+| `reason=network_error` | 根据 `networkCode` 检查 DNS、TLS、出站连接及超时；在相同 Node 版本和服务运行环境中核验，curl 成功不能替代 Node fetch 验证。不要关闭 TLS 校验。 |
+| `stage=user_profile`, `reason=http_error` | 按 HTTP 状态检查 GitHub 用户接口访问，401 为 token 被拒绝，403/429 需检查限流等上游限制。 |
+| `reason=invalid_json/missing_access_token/invalid_profile` | 检查上游是否被代理替换或返回异常；只报告脱敏状态，不输出完整响应。 |
+
+仅此后台诊断变更无需重新构建前端或部署博客静态产物。保留 OAuth 环境文件、数据库及备份，实际登录成功后再宣布故障已解决。

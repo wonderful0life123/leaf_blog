@@ -6,7 +6,9 @@ import {StoreError} from './store.mjs';
 const digest=v=>createHash('sha256').update(v).digest('hex');
 const random=()=>randomBytes(32).toString('base64url');
 const TTL=7*24*60*60;
-export function openAuth(config,{fetcher=fetch,now=Date.now}={}) {
+const OAUTH_ERRORS=new Set(['incorrect_client_credentials','redirect_uri_mismatch','bad_verification_code','unverified_user_email','application_suspended','expired_token','access_denied']);
+const NETWORK_CODES=new Set(['ENOTFOUND','EAI_AGAIN','ECONNREFUSED','ECONNRESET','ETIMEDOUT','UND_ERR_CONNECT_TIMEOUT','UND_ERR_HEADERS_TIMEOUT','UND_ERR_BODY_TIMEOUT','CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE','DEPTH_ZERO_SELF_SIGNED_CERT']);
+export function openAuth(config,{fetcher=fetch,now=Date.now,reportFailure=event=>console.error('[studio] OAuth upstream failure',JSON.stringify(event))}={}) {
   fs.mkdirSync(config.dataDir,{recursive:true,mode:0o700});
   const file=path.join(config.dataDir,'auth.sqlite');
   if(!fs.existsSync(file))fs.closeSync(fs.openSync(file,'wx',0o600));
@@ -55,15 +57,29 @@ export function openAuth(config,{fetcher=fetch,now=Date.now}={}) {
     if(!pending)throw new StoreError(400,'登录验证失效，请重新开始');
     res.setHeader('Set-Cookie',cookie(flowName,'',0));
     if(url.searchParams.has('error')||url.searchParams.getAll('code').length!==1||!code||code.length>512)throw new StoreError(400,'GitHub 授权未完成，请重新登录');
-    let profile;
+    let profile,stage='token_exchange',reason='network_error',status=null;
     try {
       const response=await fetcher('https://github.com/login/oauth/access_token',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:config.clientId,client_secret:config.clientSecret,code,redirect_uri:config.origin+'/studio-auth/callback/',code_verifier:pending.verifier}),signal:AbortSignal.timeout(10000),redirect:'error'});
+      status=Number.isInteger(response.status)?response.status:null;reason='http_error';
       if(!response.ok)throw Error('OAuth exchange failed');
-      const result=await response.json();if(typeof result.access_token!=='string'||!result.access_token)throw Error('OAuth token missing');
+      reason='invalid_json';const result=await response.json();
+      reason=OAUTH_ERRORS.has(result?.error)?result.error:'missing_access_token';
+      if(typeof result?.access_token!=='string'||!result.access_token)throw Error('OAuth token missing');
+      stage='user_profile';reason='network_error';status=null;
       const account=await fetcher('https://api.github.com/user',{headers:{Accept:'application/vnd.github+json',Authorization:'Bearer '+result.access_token,'User-Agent':'wonder-writing-studio'},signal:AbortSignal.timeout(10000),redirect:'error'});
-      if(!account.ok)throw Error('GitHub identity failed');profile=await account.json();
+      status=Number.isInteger(account.status)?account.status:null;reason='http_error';
+      if(!account.ok)throw Error('GitHub identity failed');
+      reason='invalid_json';profile=await account.json();
+      reason='invalid_profile';
+      if(!Number.isSafeInteger(profile?.id)||profile.id<=0||typeof profile.login!=='string'||!profile.login)throw Error('GitHub profile invalid');
       // The GitHub token is intentionally not saved: this stage only verifies identity.
-    }catch{throw new StoreError(502,'GitHub 登录暂时不可用，请重新尝试');}
+    }catch(error){
+      // Only bounded labels/statuses: never log error messages, URLs, response bodies or credentials.
+      const code=error?.cause?.code||error?.code;
+      const networkCode=NETWORK_CODES.has(code)?code:error?.name==='TimeoutError'?'TIMEOUT':undefined;
+      try{reportFailure({stage,reason,status,...(networkCode?{networkCode}:{})});}catch{}
+      throw new StoreError(502,'GitHub 登录暂时不可用，请重新尝试');
+    }
     if(String(profile.id)!==config.ownerId||typeof profile.login!=='string')throw new StoreError(403,'这个 GitHub 账号没有写作权限');
     const old=readCookie(req,cookieName);if(old)db.prepare('DELETE FROM sessions WHERE hash=?').run(digest(old));
     cleanup();
