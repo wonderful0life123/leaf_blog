@@ -7,12 +7,14 @@ import {createHandler} from './http.mjs';
 import {openAuth} from './auth.mjs';
 import {createCatalog} from './catalog.mjs';
 import {serverConfig} from './config.mjs';
+import {openPublications} from './publications.mjs';
 const MIME={'.js':'text/javascript','.css':'text/css','.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.avif':'image/avif','.gif':'image/gif','.svg':'image/svg+xml'};
 export function createStudioServer(config,authOptions={}) {
   const shell=path.join(config.webDir,'studio/index.html');
   if(!fs.existsSync(shell))throw new Error('缺少写作前端，请先执行 npm run studio:build');
   const store=openStore(config),auth=openAuth(config,authOptions),catalog=createCatalog(config.sourceRoots);
-  const api=createHandler(store,{authorize:auth.requireUser,catalog});
+  const publications=openPublications({dataDir:config.dataDir,store,config:config.publication,sourceRoots:config.sourceRoots});
+  const api=createHandler(store,{authorize:auth.requireUser,catalog,publications});
   const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));};
   const server=http.createServer(async(req,res)=>{
     res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');

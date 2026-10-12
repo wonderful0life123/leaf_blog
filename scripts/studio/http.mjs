@@ -1,6 +1,6 @@
 import { StoreError } from './store.mjs';
 const loopback = a => ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(a);
-export function createHandler(store, {authorize, catalog} = {}) {
+export function createHandler(store, {authorize, catalog, publications} = {}) {
   return async (req,res) => {
     const json = (status,value) => {res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};
     try {
@@ -26,12 +26,28 @@ export function createHandler(store, {authorize, catalog} = {}) {
         if(!req.headers['content-type']?.startsWith('application/json'))throw new StoreError(415,'需要 JSON 数据');
         try{return JSON.parse((await body(3*1024*1024)).toString());}catch(e){if(e instanceof StoreError)throw e;throw new StoreError(400,'JSON 格式无效');}
       }
+      const publishInfo=pathname.match(/^\/drafts\/([^/]+)\/publication$/);
+      if(publishInfo&&method==='GET')return json(200,publications?publications.info(publishInfo[1]):{available:false,enabled:false});
+      if(publishInfo&&method==='POST'){
+        if(!publications)throw new StoreError(503,'发布服务尚未配置');
+        return json(202,{publication:publications.prepare(publishInfo[1],await data())});
+      }
+      const publication=pathname.match(/^\/publications\/([^/]+)$/);
+      if(publication&&publications&&method==='GET')return json(200,{publication:publications.get(publication[1])});
+      if(publication&&publications&&method==='POST')return json(202,{publication:publications.confirm(publication[1],await data())});
+      const preview=pathname.match(/^\/publications\/([^/]+)\/preview(\/.*)$/);
+      if(preview&&publications&&method==='GET'){
+        const relative=decodeURIComponent(new URL(req.url,`http://${host}`).pathname.split('/preview/')[1]||'');
+        const resource=publications.preview(preview[1],relative);
+        res.writeHead(200,{'Content-Type':resource.mime,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'SAMEORIGIN','Referrer-Policy':'no-referrer','Content-Security-Policy':"sandbox allow-same-origin; default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"});return res.end(resource.bytes);
+      }
+      const decorate=draft=>publications?publications.decorate([draft])[0]:draft;
       if(pathname==='/catalog'&&method==='GET'&&catalog)return json(200,catalog.scan());
-      if(pathname==='/drafts'&&method==='GET')return json(200,{drafts:store.list({trash:new URL(req.url,`http://${host}`).searchParams.get('state')==='trash'})});
+      if(pathname==='/drafts'&&method==='GET'){const drafts=store.list({trash:new URL(req.url,`http://${host}`).searchParams.get('state')==='trash'});return json(200,{drafts:publications?publications.decorate(drafts):drafts});}
       if(pathname==='/drafts'&&method==='POST')return json(201,{draft:store.create(await data())});
       const draft=pathname.match(/^\/drafts\/([^/]+)$/);
-      if(draft&&method==='GET')return json(200,{draft:store.get(draft[1])});
-      if(draft&&method==='PUT')return json(200,{draft:store.update(draft[1],await data())});
+      if(draft&&method==='GET')return json(200,{draft:decorate(store.get(draft[1]))});
+      if(draft&&method==='PUT')return json(200,{draft:decorate(store.update(draft[1],await data()))});
       const action=pathname.match(/^\/drafts\/([^/]+)\/(trash|restore|purge|duplicate)$/);
       if(action&&method==='POST'){
         const input=await data();

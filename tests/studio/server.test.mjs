@@ -143,3 +143,23 @@ test('OAuth 故障日志区分失败阶段且不泄露凭据或上游原文',asy
     assert(!result.headers['set-cookie'].some(c=>c.startsWith('__Host-wonder_session=')));
   });
 });
+test('发布设置、任务与私密预览均需登录，提交需要同源请求',async t=>{
+ const f=await setup(t),cookie=await f.login(),headers={Cookie:cookie,Origin:f.config.origin};
+ const draft=(await f.request('/studio-api/drafts/',{method:'POST',headers,body:{title:'发布权限',body:'PRIVATE_PREVIEW',category:'',tags:''}})).data.draft;
+ const info=`/studio-api/drafts/${draft.id}/publication/`,job=`/studio-api/publications/${randomUUID()}/`;
+ for(const url of [info,job,job+'preview/posts/private/'])assert.equal((await f.request(url)).status,401);
+ for(const url of [info,job])assert.equal((await f.request(url,{method:'POST',headers:{Cookie:cookie,Origin:'https://evil.test'},body:{confirm:true}})).status,403);
+ assert.equal((await f.request(info,{headers})).data.enabled,false);
+ assert.equal((await f.request(info,{method:'POST',headers,body:{revision:1}})).status,503);
+});
+test('私密构建预览 HTML 与 CSS 受保护、禁止缓存、禁止脚本并正确改写字体地址',async t=>{
+ const f=await setup(t),id=randomUUID(),dir=path.join(f.config.dataDir,'publications',id);
+ fs.mkdirSync(path.join(dir,'work/dist/posts/test'),{recursive:true});fs.mkdirSync(path.join(dir,'work/dist/_astro'));
+ fs.writeFileSync(path.join(dir,'job.json'),JSON.stringify({id,state:'ready',built:true,url:'/posts/test/',createdAt:new Date().toISOString()}));
+ fs.writeFileSync(path.join(dir,'work/dist/posts/test/index.html'),'<html><script>private()</script><link rel="stylesheet" href="/_astro/font.css"><p>PRIVATE_RENDER</p></html>');
+ fs.writeFileSync(path.join(dir,'work/dist/_astro/font.css'),'@font-face{src:url(/_astro/font.woff2)}');
+ const url=`/studio-api/publications/${id}/preview`,cookie=await f.login();
+ assert.equal((await f.request(url+'/posts/test/')).status,401);assert.equal((await f.request(url+'/_astro/font.css')).status,401);
+ const html=await f.request(url+'/posts/test/',{headers:{Cookie:cookie}});assert.equal(html.status,200);assert.match(html.headers['content-security-policy'],/default-src 'none'/);assert.match(html.headers['cache-control'],/private, no-store/);assert.equal(html.headers['x-frame-options'],'SAMEORIGIN');assert.ok(!html.text.includes('<script'));assert.ok(html.text.includes('PRIVATE_RENDER'));
+ const css=await f.request(url+'/_astro/font.css',{headers:{Cookie:cookie}});assert.equal(css.status,200);assert.ok(css.text.includes(url+'/_astro/font.woff2'));assert.equal((await f.request(url+'/%2e%2e%2fjob.json',{headers:{Cookie:cookie}})).status,404);
+});

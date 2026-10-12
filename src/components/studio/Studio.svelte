@@ -19,12 +19,14 @@
   let dialog = '', noteQuery = '', folder = 'all', selected = null, notice = '', saved = '';
   let focused = true, settingsOpen = false;
   let bodyEditor, publishing = false, timer, toastTimer;
+  let publishInfo=null, publication=null, publishError='',publishConsent=false,publishTimer;
+  let publishPath='',publishDescription='',publishDate='';
   let dirty = false, saving = false, saveError = '', conflict = false, editVersion = 0, saveTask = null;
   let recoveryWarning = '', loadError = '';
   $: folders = [...new Set(notes.map(n=>n.folder))].sort();
   const sourcePairs = {'AI Infra/cuda/全局位置计算.md':'ai-infra/cuda/global-indexing.md','AI Infra/cuda/element wise算子.md':'ai-infra/cuda/element-wise.md','AI Infra/cuda/参考资料.md':'ai-infra/cuda/references.md','AI Infra/telilang/TileLang-ascend.md':'ai-infra/telilang/tilelang-ascend.md'};
   const normalize = d => ({...d, root:d.source?.root||'blog',path:d.source?.path||'',noteId:d.source?.root==='notes'?d.source.path:undefined});
-  $: items = [...drafts, ...articles.filter(a=>!drafts.some(d=>d.source?.root==='blog'&&d.source.path===a.path))];
+  $: items = [...drafts, ...articles.filter(a=>!drafts.some(d=>(d.source?.root==='blog'&&d.source.path===a.path)||d.publication?.path===a.path))];
   $: filtered = selectArticles(filter==='trash'?trash:items,filter,search,sort);
   $: found = notes.filter(n=>(folder==='all'||n.folder===folder) && (n.title+' '+n.folder).toLowerCase().includes(noteQuery.toLowerCase()));
   $: draftCount = items.filter(a=>a.status==='draft').length;
@@ -32,7 +34,7 @@
   $: notePreview = selected ? markdown(selected.body,selected) : '';
   function portal(node) { document.body.appendChild(node);return {destroy(){node.remove();}}; }
   function toast(text) { notice=text; clearTimeout(toastTimer); toastTimer=setTimeout(()=>notice='',4500); }
-  function keydown(e) { if(e.key==='Escape'&&!busy)dialog='';if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();persist();} }
+  function keydown(e) { if(e.key==='Escape'&&!busy&&!publishing)dialog='';if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();persist();} }
   async function request(url,options={}) {
     const [pathname,query]=url.split('?');
     const response=await fetch('/studio-api'+pathname+'/'+(query?'?'+query:''),{...options,signal:AbortSignal.timeout(15000)});
@@ -78,7 +80,7 @@
     window.addEventListener('beforeunload',beforeUnload);
     document.addEventListener('visibilitychange',visibility);
     document.addEventListener('click',leave,true);
-    return ()=>{clearTimeout(timer);clearTimeout(toastTimer);window.removeEventListener('beforeunload',beforeUnload);document.removeEventListener('visibilitychange',visibility);document.removeEventListener('click',leave,true);};
+    return ()=>{clearTimeout(timer);clearTimeout(toastTimer);clearTimeout(publishTimer);window.removeEventListener('beforeunload',beforeUnload);document.removeEventListener('visibilitychange',visibility);document.removeEventListener('click',leave,true);};
   });
   function open(draft) {
     current={...normalize(draft)};screen='editor';dirty=false;conflict=false;saveError='';editVersion=0;
@@ -173,7 +175,40 @@
   }
   function showImport(){if(busy||uploading)return;noteQuery='';folder='all';selected=notes.find(n=>n.id.includes('Puzzle 01'))||notes[0];dialog='import';}
   function exportFile(){const text='---\ntitle: '+JSON.stringify(current.title||'未命名文章')+'\ncategory: '+JSON.stringify(current.category)+'\ntags: '+JSON.stringify(current.tags.split(/[,，]/).map(x=>x.trim()).filter(Boolean))+'\npublished: '+new Date().toISOString().slice(0,10)+'\ndraft: true\n---\n\n'+current.body;const url=URL.createObjectURL(new Blob([text],{type:'text/markdown;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=(current.title||'未命名文章').replace(/[\\/:*?"<>|]/g,'-')+'.md';a.click();URL.revokeObjectURL(url);toast('正文已导出，图片保存在'+storageLabel+'草稿库中。');}
-  async function publish(){if(busy||uploading)return;if(await persist()){dialog='publish';}}
+  async function publish(){
+    if(busy||uploading||publishing)return;
+    if(!await persist())return;
+    dialog='publish';publishError='';publishConsent=false;publishInfo=null;publication=null;publishing=true;
+    try{publishInfo=await request('/drafts/'+current.id+'/publication');publishPath=publishInfo.path||'';publishDescription=publishInfo.description||'';publishDate=publishInfo.published||'';publication=publishInfo.latest;if(publication?.state==='ready'&&publication.revision!==current.revision)publication=null;pollPublication();}
+    catch(e){publishError=e.message;}finally{publishing=false;}
+  }
+  function resetPublication(){publication=null;publishConsent=false;publishError='';clearTimeout(publishTimer);}
+  function stylePublicationPreview(event){
+    const doc=event.currentTarget.contentDocument;if(!doc)return;
+    const page=document.documentElement,preview=doc.documentElement;
+    preview.style.setProperty('--hue',getComputedStyle(page).getPropertyValue('--hue'));
+    preview.classList.toggle('dark',page.classList.contains('dark'));
+    preview.setAttribute('data-theme',page.getAttribute('data-theme')||'light');
+    const heading=doc.querySelector('main h1');
+    if(heading){heading.style.scrollMarginTop='6rem';heading.scrollIntoView({block:'start'});}
+  }
+  function pollPublication(){
+    clearTimeout(publishTimer);
+    if(!publication||!['building','publishing'].includes(publication.state)||dialog!=='publish')return;
+    const id=publication.id;
+    publishTimer=setTimeout(async()=>{try{const result=await request('/publications/'+id);if(publication?.id===id){publication=result.publication;if(publication.state==='published'){await refreshDrafts();if(serverMode){const catalog=await request('/catalog');articles=catalog.articles;}const fresh=drafts.find(d=>d.id===current?.id);if(fresh)current={...current,publication:fresh.publication,status:fresh.status};}pollPublication();}}catch(e){publishError=e.message;}},1500);
+  }
+  async function preparePublication(){
+    publishing=true;publishError='';publishConsent=false;
+    try{if(!await persist())return;publication=(await request('/drafts/'+current.id+'/publication',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:current.revision,path:publishPath,description:publishDescription,published:publishDate})})).publication;pollPublication();}
+    catch(e){publishError=e.message;}finally{publishing=false;}
+  }
+  async function confirmPublication(){
+    if(!publishConsent&&publication?.state!=='retry')return;
+    publishing=true;publishError='';
+    try{publication=(await request('/publications/'+publication.id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:publication.revision,confirm:true})})).publication;pollPublication();}
+    catch(e){publishError=e.message;}finally{publishing=false;}
+  }
   async function uploadFiles(files) {
     if(!current||uploading||busy)return;uploading=true;
     try {
@@ -187,16 +222,20 @@
   }
   async function reauthenticate(){try{account=(await request('/session')).user;authNeeded=false;await persist();}catch(e){toast('请先在新窗口完成 GitHub 登录，再重试。');}}
   async function logout(){if(uploading||busy||!(await persist()))return;try{await request('/logout',{method:'POST'});for(const key of Object.keys(sessionStorage))if(key.startsWith('wonder-draft-recovery:'))sessionStorage.removeItem(key);current=null;drafts=[];notes=[];articles=[];account=null;dialog='';location.assign('/studio/');}catch(e){toast(e.message);}}
-  function status(a){return a.persisted?storageLabel+'草稿':a.status==='published'?'已发布':'仓库草稿';}
+  function status(a){return a.publication?(a.publication.revision===a.revision?'已发布':'已发布 · 有修改'):a.persisted?storageLabel+'草稿':a.status==='published'?'已发布':'仓库草稿';}
+  function imageSource(href,a){
+    let src=a.assets?.[href]||href;
+    if(!/^(https?:|\/studio-api\/media\/)/i.test(src)){
+      try { const base=new URL('https://local/'+a.path);const u=new URL(src,base);src='/studio/assets/'+(assetMap[a.root+'/'+decodeURIComponent(u.pathname.slice(1))]||'missing')+'/'; }catch{src='';}
+    }
+    if(/^\/studio-api\/media\/[a-f\d]{64}$/.test(src))src+='/';
+    return src;
+  }
   function markdown(raw,a){
     if(typeof document==='undefined')return '';
     const renderer=new marked.Renderer();
     renderer.image=({href,text})=>{
-      let src=a.assets?.[href]||href;
-      if(!/^(https?:|\/studio-api\/media\/)/i.test(src)){
-        try { const base=new URL('https://local/'+a.path);const u=new URL(src,base);src='/studio/assets/'+(assetMap[a.root+'/'+decodeURIComponent(u.pathname.slice(1))]||'missing')+'/'; }catch{src='';}
-      }
-      if(/^\/studio-api\/media\/[a-f\d]{64}$/.test(src))src+='/';
+      const src=imageSource(href,a);
       return `<img src="${escapeHtml(src)}" alt="${escapeHtml(text||'')}" loading="eager">`;
     };
     const html=marked.parse(raw,{renderer,breaks:false});
@@ -238,7 +277,7 @@
     <button class="account" on:click={()=>dialog='account'}>{serverMode?account?.login:'本机写作'}</button>
   </nav>
   <div class="studio-content">
-    <div class="demo-strip card-base"><span>◉</span> {serverMode?'草稿和图片自动保存到服务器，登录后可跨设备继续写作。发布功能尚未接通。':'草稿和图片保存在这台电脑，刷新后可继续写作。尚未接通 GitHub 登录与发布。'}<button on:click={()=>dialog='about'}>保存说明</button></div>
+    <div class="demo-strip card-base"><span>◉</span> {serverMode?'草稿和图片自动保存到服务器，登录后可跨设备继续写作。发布前可检查文章并查看构建预览。':'草稿和图片保存在这台电脑，刷新后可继续写作。本机支持发布前预览，正式发布需在服务器登录。'}<button on:click={()=>dialog='about'}>保存说明</button></div>
     {#if loadError}<div class="save-error" role="alert">{loadError}<button on:click={initialize}>重新读取</button></div>{/if}
     {#if loading}<p class="empty">正在读取草稿…</p>{/if}
     {#if authNeeded&&!current}<div class="save-error" role="alert">登录已失效。<a data-auth-link data-no-swup href="/studio-auth/login/">重新使用 GitHub 登录</a></div>{/if}
@@ -272,15 +311,15 @@
       </section>
     {:else if current}
       <section class="editor card-base" class:focused use:editorPortal={focused}>
-        <div class="editor-top"><button class="quiet" on:click={home}>← 文章列表</button><span class="save-status" role="status"><i></i>{uploading?'正在保存图片…':saved}</span><div class="editor-actions"><button aria-pressed={settingsOpen} on:click={()=>settingsOpen=!settingsOpen}>文章设置</button><button aria-pressed={focused} on:click={()=>focused=!focused}>{focused?'退出专注':'专注写作'}</button><button on:click={exportFile}>导出 Markdown</button><button disabled={busy||saving||uploading||!dirty||conflict} on:click={persist}>{saving?'保存中…':'立即保存'}</button><button on:click={publish}>发布说明 ↗</button></div></div>
+        <div class="editor-top"><button class="quiet" on:click={home}>← 文章列表</button><span class="save-status" role="status"><i></i>{uploading?'正在保存图片…':saved}</span><div class="editor-actions"><button aria-pressed={settingsOpen} on:click={()=>settingsOpen=!settingsOpen}>文章设置</button><button aria-pressed={focused} on:click={()=>focused=!focused}>{focused?'退出专注':'专注写作'}</button><button on:click={exportFile}>导出 Markdown</button><button disabled={busy||saving||uploading||!dirty||conflict} on:click={persist}>{saving?'保存中…':'立即保存'}</button><button on:click={publish}>预览与发布 ↗</button></div></div>
         {#if saveError}<div class="save-error" role="alert"><span>{saveError}</span>{#if authNeeded}<a data-auth-link data-no-swup href="/studio-auth/login/" target="_blank" rel="noopener noreferrer">在新窗口重新登录</a><button on:click={reauthenticate}>登录后重试保存</button>{:else if conflict}<button disabled={busy} on:click={saveCopy}>将我的修改另存为草稿</button>{:else}<button on:click={persist}>重试保存</button>{/if}<button on:click={exportFile}>导出当前正文</button></div>{/if}
         {#if authNeeded&&!saveError}<div class="save-error" role="alert">登录已失效，当前文字仍保留。<a data-auth-link data-no-swup href="/studio-auth/login/" target="_blank" rel="noopener noreferrer">在新窗口重新登录</a><button on:click={reauthenticate}>登录后继续</button></div>{/if}
         {#if recoveryWarning}<p class="save-error">{recoveryWarning}</p>{/if}
         <div class="editor-heading"><div class="eyebrow">{current.noteId?'从笔记开始':'把想法写下来'} <span class="small-status">{status(current)}</span></div><input class="title-input" disabled={busy} aria-label="文章标题" placeholder="给这篇文章起个标题…" bind:value={current.title} on:input={changed}/>{#if current.noteId}<p class="source-line">⌘ {current.noteId} · {storageLabel}副本，不改动原笔记</p>{/if}</div>
         <div class="editor-layout" class:with-settings={settingsOpen}>
           <div class="writing-area">
-            {#key current.id}<WritingEditor bind:this={bodyEditor} value={current.body} {preview} disabled={busy} {uploading} onChange={text=>{current.body=text;changed();}} onImages={uploadFiles}/>{/key}
-          </div>{#if settingsOpen}<aside class="properties"><h3>文章设置</h3><label>分类<input disabled={busy} placeholder="例如 AI infra/cuda" bind:value={current.category} on:input={changed}/></label><p>用 / 分隔层级，分类不会改变文章网址。</p><label>标签<input disabled={busy} placeholder="CUDA, GPU, 学习笔记" bind:value={current.tags} on:input={changed}/></label><div class="property-divider"></div><h4>保存与发布</h4><p>修改会自动保存到{storageLabel}，等待显示“已保存到{storageLabel}”后再离开。</p><div class="private-note">◈ 草稿与博客仓库分开保存<br/><span>当前不会提交或发布到网站。</span></div><button class="wide" on:click={showImport}>⌘ 浏览我的笔记</button></aside>{/if}</div>
+            {#key current.id}<WritingEditor bind:this={bodyEditor} value={current.body} {preview} resolveImage={href=>imageSource(href,current)} disabled={busy} {uploading} onChange={text=>{current.body=text;changed();}} onImages={uploadFiles}/>{/key}
+          </div>{#if settingsOpen}<aside class="properties"><h3>文章设置</h3><label>分类<input disabled={busy} placeholder="例如 AI infra/cuda" bind:value={current.category} on:input={changed}/></label><p>用 / 分隔层级，分类不会改变文章网址。</p><label>标签<input disabled={busy} placeholder="CUDA, GPU, 学习笔记" bind:value={current.tags} on:input={changed}/></label><div class="property-divider"></div><h4>保存与发布</h4><p>修改会自动保存到{storageLabel}，等待显示“已保存到{storageLabel}”后再离开。</p><div class="private-note">◈ 草稿与博客仓库分开保存<br/><span>自动保存保持私密，确认发布后才公开。</span></div><button class="wide" on:click={showImport}>⌘ 浏览我的笔记</button></aside>{/if}</div>
       </section>
     {/if}
   </div>
@@ -289,12 +328,45 @@
 {#if notice}<div class="toast" role="status" use:portal>✓ {notice}</div>{/if}
 {#if dialog}
   <div class="overlay" use:portal role="presentation" on:click={e=>{if(e.target===e.currentTarget&&!publishing&&!busy)dialog='';}}>
-    <div class="modal card-base" class:import-modal={dialog==='import'} role="dialog" aria-modal="true" aria-label={dialog==='draft-action'?'草稿操作确认':dialog==='import'?'从笔记导入':'预览说明'} tabindex="-1"><div class="modal-heading"><div><span class="eyebrow">wonder · 写作空间</span><h2>{dialog==='draft-action'?(pendingAction?.action==='purge'?'彻底删除草稿？':'移入回收站？'):dialog==='import'?'从笔记里，挑一个想法。':dialog==='publish'?'草稿已保存，发布尚未接通':dialog==='account'?(serverMode?'GitHub 账号':'当前使用本机写作'):'草稿保存说明'}</h2></div><button aria-label="关闭弹窗" disabled={publishing||busy} on:click={()=>dialog=''}>✕</button></div>
+    <div class="modal card-base" class:import-modal={dialog==='import'} class:publication-modal={dialog==='publish'} role="dialog" aria-modal="true" aria-label={dialog==='draft-action'?'草稿操作确认':dialog==='import'?'从笔记导入':dialog==='publish'?'预览与发布':'预览说明'} tabindex="-1"><div class="modal-heading"><div><span class="eyebrow">wonder · 写作空间</span><h2>{dialog==='draft-action'?(pendingAction?.action==='purge'?'彻底删除草稿？':'移入回收站？'):dialog==='import'?'从笔记里，挑一个想法。':dialog==='publish'?'预览与发布':dialog==='account'?(serverMode?'GitHub 账号':'当前使用本机写作'):'草稿保存说明'}</h2></div><button aria-label="关闭弹窗" disabled={publishing||busy} on:click={()=>dialog=''}>✕</button></div>
     {#if dialog==='draft-action'&&pendingAction}<p class="modal-copy">{pendingAction.article.title||'未命名文章'}</p><p class="modal-copy">{pendingAction.action==='purge'?'彻底删除后，无法从回收站恢复此草稿。此操作不会删除博客原文或其他草稿共用的图片。':'正文和图片引用会保留，可在回收站恢复。此操作不会删除已发布的博客原文。'}</p><div class="modal-footer"><button disabled={busy} on:click={()=>dialog=''}>取消</button><button class:danger={pendingAction.action==='purge'} disabled={busy} on:click={()=>manageDraft(pendingAction.article,pendingAction.action)}>{busy?'正在处理…':pendingAction.action==='purge'?'确认彻底删除':'确认移入回收站'}</button></div>
     {:else if dialog==='import'}<div class="import-tools"><label class="search">⌕ <input aria-label="搜索笔记" placeholder="搜索笔记名称或目录…" bind:value={noteQuery}/></label><select aria-label="笔记目录" bind:value={folder}><option value="all">全部目录 · {notes.length} 篇</option>{#each folders as f}<option value={f}>{f}</option>{/each}</select></div><div class="import-body"><div class="note-list">{#each found as n}<button class:chosen={selected?.id===n.id} on:click={()=>selected=n}><span>{n.title}</span><small>{n.folder}</small>{#if sourcePairs[n.id]}<em>已关联博客</em>{/if}</button>{/each}{#if !found.length}<p class="empty">没有匹配的笔记</p>{/if}</div><div class="note-detail">{#if selected}<span class="category">{selected.folder}</span><h2>{selected.title}</h2><article class="prose">{@html notePreview}</article>{/if}</div></div><div class="modal-footer"><span>正文与图片一起预览，原笔记保持不变。</span><button class="primary" disabled={!selected||busy||loading} on:click={importNote}>{selected&&(sourcePairs[selected.id]||items.some(a=>a.noteId===selected.id))?'打开已有文章':'导入并保存草稿'} →</button></div>
-    {:else if dialog==='publish'}<p class="modal-copy">正文、分类、标签和图片已保存到{storageLabel}。这一步不会提交到 GitHub，也不会更新线上博客。</p><div class="publish-summary"><h3>{current.title||'未命名文章'}</h3><p>{current.category||'待分类'} · {current.body.length} 字符 · 第 {current.revision} 版</p></div><div class="modal-footer"><button on:click={()=>dialog=''}>继续编辑</button><button class="primary" on:click={exportFile}>导出正文</button></div>
+    {:else if dialog==='publish'}
+      {#if !publishInfo}<p class="modal-copy">{publishing?'正在读取发布设置…':'发布设置尚未加载。'}</p>
+      {:else if !publishInfo.available}<p class="modal-copy">草稿已保存。服务器尚未配置发布服务，配置后即可在这里生成预览并发布。</p>
+      {:else}
+        <p class="modal-copy">先检查这篇文章的格式和图片，构建成功后查看博客实际排版，再确认发布。</p>
+        <div class="publication-fields">
+          <label>文章路径<input aria-label="发布文章路径" bind:value={publishPath} disabled={publishing||['building','publishing','retry'].includes(publication?.state)||current.source?.root==='blog'||!!current.publication} on:input={resetPublication} placeholder="writing/my-first-post.md"/><small>目录与分类分别管理；发布后保持网址不变。</small></label>
+          <label>发布日期<input type="date" aria-label="发布日期" bind:value={publishDate} disabled={publishing||['building','publishing','retry'].includes(publication?.state)} on:input={resetPublication}/></label>
+          <label class="publication-description">文章摘要<textarea aria-label="发布摘要" rows="2" maxlength="1000" bind:value={publishDescription} disabled={publishing||['building','publishing','retry'].includes(publication?.state)} on:input={resetPublication} placeholder="一句话介绍这篇文章（可选）"></textarea></label>
+        </div>
+        {#if publication}
+          <div class="publication-status" role="status">
+            {#if publication.state==='building'}正在检查图片并构建博客预览，可以关闭此窗口，稍后回来查看。
+            {:else if publication.state==='publishing'}正在提交 GitHub 并更新博客，请勿重复操作。
+            {:else if publication.state==='ready'}✓ 构建检查通过 · 第 {publication.revision} 版 · {publication.imageCount} 张本地图片
+            {:else if publication.state==='published'}✓ 已发布到博客 · 提交 {publication.commit.slice(0,8)}
+            {:else}{publication.error}{/if}
+          </div>
+          {#each publication.warnings as warning}<p class="publication-warning">{warning}</p>{/each}
+          {#if publication.previewUrl}<p class="preview-caption">博客排版预览 · 链接、播放器等交互功能在发布后可用</p><iframe class="publication-preview" title="博客文章构建预览" src={publication.previewUrl} on:load={stylePublicationPreview} sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>{/if}
+          {#if publication.state==='published'}<p class="modal-copy"><a class="published-link" href={publication.url} target="_blank" rel="noopener noreferrer" data-no-swup>查看已发布文章 ↗</a> · 草稿副本继续保留，可修改后再次发布。</p>{/if}
+        {/if}
+        {#if !publishInfo.enabled}<p class="modal-copy">当前为私密预览模式，不会提交 GitHub 或更新线上博客。</p>{/if}
+        {#if publication?.state==='ready'&&publishInfo.enabled}<label class="publish-consent"><input type="checkbox" bind:checked={publishConsent}/>我确认将正文和图片提交到公开的 leaf_blog 仓库，并发布到博客。</label>{/if}
+      {/if}
+      {#if publishError}<p class="save-error" role="alert">{publishError}</p>{/if}
+      <div class="modal-footer"><button disabled={publishing} on:click={()=>dialog=''}>返回写作</button>
+        {#if publishInfo?.available}
+          {#if publication?.state==='ready'&&publishInfo.enabled}<button class="primary" disabled={publishing||!publishConsent} on:click={confirmPublication}>确认发布</button>
+          {:else if publication?.state==='retry'}<button class="primary" disabled={publishing||!publishInfo.enabled} on:click={confirmPublication}>重试上线</button>
+          {:else if ['building','publishing'].includes(publication?.state)}<button disabled>正在处理…</button>
+          {:else}<button class="primary" disabled={publishing} on:click={preparePublication}>检查并生成预览</button>{/if}
+        {/if}
+      </div>
     {:else if dialog==='account'}{#if serverMode}<p class="modal-copy">已登录为 {account?.login}。草稿和图片保存在服务器，其他设备登录同一账号即可继续编辑。</p><button class="wide" on:click={logout}>保存并退出登录</button>{:else}<p class="modal-copy">现在仅允许在这台电脑访问，不需要登录。下一阶段将接入 GitHub 登录，再部署到服务器供你跨设备使用。</p><button class="primary wide" on:click={()=>dialog=''}>继续写作</button>{/if}
-    {:else}<p class="modal-copy">新建、编辑或导入的内容保存到独立的{storageLabel}草稿库，正文和上传图片在刷新页面、重启服务后仍会保留。博客与笔记仓库原文件不会被改动。</p><p class="modal-copy">编辑停止约半秒后自动保存。保存失败或其他页面更新了同一草稿时，会明确提示，保留当前修改。请等待“已保存到{storageLabel}”再关闭页面。</p><p class="modal-copy">{serverMode?'登录后可以跨设备读取服务器草稿，真实构建预览和发布将在后续接入。':'本机保存暂不支持跨设备。GitHub 登录、真实构建预览和发布将在后续接入。'}</p><button class="primary wide" on:click={()=>dialog=''}>知道了</button>{/if}
+    {:else}<p class="modal-copy">新建、编辑或导入的内容保存到独立的{storageLabel}草稿库，正文和上传图片在刷新页面、重启服务后仍会保留。博客与笔记仓库原文件不会被改动。</p><p class="modal-copy">编辑停止约半秒后自动保存。保存失败或其他页面更新了同一草稿时，会明确提示，保留当前修改。请等待“已保存到{storageLabel}”再关闭页面。</p><p class="modal-copy">{serverMode?'登录后可以跨设备读取服务器草稿，可在“预览与发布”中检查并发布文章。':'本机保存暂不支持跨设备。GitHub 登录、可在“预览与发布”中检查并发布文章。'}</p><button class="primary wide" on:click={()=>dialog=''}>知道了</button>{/if}
     </div>
   </div>
 {/if}
@@ -427,9 +499,9 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
 .modal-footer { display:flex; justify-content:space-between; align-items:center; gap:1rem; margin-top:1.4rem; }
 .modal-footer>span { font-size:.8rem; color:var(--content-meta); }
 .modal-copy { font-size:.9rem; color:var(--content-meta); line-height:1.9; margin:1.5rem 0; }
-.publish-summary { padding:1.2rem; border-radius:.7rem; background:var(--btn-regular-bg); }
-.publish-summary h3 { font-size:1.2rem; font-weight:600; }
-.publish-summary p { font-size:.8rem; color:var(--content-meta); margin:.6rem 0; }
+.publication-modal{width:min(1100px,96vw)}
+.publication-fields{display:grid;grid-template-columns:minmax(0,1fr) 180px;gap:1rem;margin:1rem 0}.publication-fields label{display:flex;flex-direction:column;gap:.4rem;font-size:.85rem}.publication-fields small,.preview-caption{color:var(--content-meta);font-size:.75rem}.publication-description{grid-column:1/-1}.publication-description textarea{padding:.7rem;border:1px solid var(--line-divider);border-radius:.6rem;background:var(--card-bg);color:var(--studio-text);resize:vertical}.publication-status{padding:.8rem 1rem;border-radius:.6rem;background:var(--btn-regular-bg);font-size:.85rem}.publication-warning{font-size:.8rem;color:var(--content-meta);margin:.5rem 0}.publication-preview{width:100%;height:55vh;border:1px solid var(--line-divider);border-radius:.7rem;background:white;margin:.5rem 0 1rem}.publish-consent{display:flex;align-items:flex-start;gap:.6rem;font-size:.85rem;line-height:1.7;margin:1rem 0}.publish-consent input{margin-top:.35rem}.published-link{color:var(--primary);text-decoration:underline}.preview-caption{margin-top:1rem}
+@media(max-width:700px){.publication-fields{grid-template-columns:1fr}.publication-preview{height:50vh}}
 .empty { padding:2rem; font-size:.9rem; color:var(--content-meta); text-align:center; }
 @media(max-width:1300px) {
  .welcome { align-items:flex-start; }.welcome-actions { flex-direction:column; }

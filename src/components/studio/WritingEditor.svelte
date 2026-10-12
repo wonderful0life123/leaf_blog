@@ -10,6 +10,8 @@
   import {search, searchKeymap, openSearchPanel} from '@codemirror/search';
   import {tags} from '@lezer/highlight';
   import {outlineFor, formatEdit, imageEdit, writingPreferences, splitRatio} from './editor-tools.mjs';
+  import {liveMarkdown} from './live-markdown.mjs';
+  export let resolveImage=href=>href;
   export let value='';
   export let preview='';
   export let disabled=false;
@@ -18,9 +20,9 @@
   export let onImages=()=>{};
   let host,view,previewPane,panes;
   let verticalSplit=false,dragPointer=null,dragStartRatio=50;
-  let mode='write',preferencesOpen=false,prefs=writingPreferences(),language='python';
+  let mode='live',preferencesOpen=false,prefs=writingPreferences(),language='python';
   let headings=[],active=0,line=1,column=1,canUndo=false,canRedo=false;
-  const editable=new Compartment(),appearance=new Compartment();
+  const editable=new Compartment(),appearance=new Compartment(),rendering=new Compartment();
   const storageKey='wonder-writing-preferences-v1';
   $: headings=outlineFor(value);
   $: if(view&&view.state.doc.toString()!==value)view.dispatch({changes:{from:0,to:view.state.doc.length,insert:value}});
@@ -28,7 +30,7 @@
   function theme(){return EditorView.theme({
     '&':{height:'100%',color:'var(--studio-text)',backgroundColor:'var(--card-bg)',fontSize:prefs.fontSize+'px'},
     '&.cm-focused':{outline:'none'},
-    '.cm-scroller':{overflow:'auto',fontFamily:'"JetBrains Mono Variable", ui-monospace, monospace',lineHeight:String(prefs.lineHeight)},
+    '.cm-scroller':{overflow:'auto',fontFamily:mode==='live'?'inherit':'"JetBrains Mono Variable", ui-monospace, monospace',lineHeight:String(prefs.lineHeight)},
     '.cm-content':{maxWidth:prefs.wide?'none':'1040px',width:'100%',margin:'0 auto',padding:'28px clamp(18px, 4vw, 56px) 160px',minHeight:'100%'},
     '.cm-line':{padding:'0'},
     '.cm-cursor':{borderLeftColor:'var(--primary)'},
@@ -47,7 +49,7 @@
     try{localStorage.setItem(storageKey,JSON.stringify(prefs));}catch{}
     view?.dispatch({effects:appearance.reconfigure(theme())});
   }
-  async function setMode(next){mode=next;await tick();view?.requestMeasure();}
+  async function setMode(next){mode=next;view?.dispatch({effects:[rendering.reconfigure(mode==='live'?liveMarkdown({resolveImage}):[]),appearance.reconfigure(theme())]});try{localStorage.setItem('wonder-writing-mode',mode);}catch{}await tick();view?.requestMeasure();}
   function resizeSplit(value){prefs={...prefs,splitRatio:splitRatio(value)};view?.requestMeasure();}
   function startResize(event){
     if(event.button!==0)return;
@@ -86,17 +88,17 @@
   }
   async function format(kind){
     if(!view||disabled)return;
-    if(mode==='preview')await setMode('write');
+    if(mode==='preview')await setMode('live');
     view.dispatch({...formatEdit(view.state,kind,language),annotations:isolateHistory.of('full'),scrollIntoView:true,userEvent:'input'});
     view.focus();
   }
   export async function insertText(text){
     if(!view||disabled)return;
-    if(mode==='preview')await setMode('write');
+    if(mode==='preview')await setMode('live');
     view.dispatch({...imageEdit(view.state,text),annotations:isolateHistory.of('full'),scrollIntoView:true,userEvent:'input'});view.focus();
   }
   async function historyAction(command){
-    if(mode==='preview')await setMode('write');
+    if(mode==='preview')await setMode('live');
     command(view);view.focus();
   }
   function jump(h,i){
@@ -104,7 +106,7 @@
     if(mode==='preview'){previewPane?.querySelectorAll('h1,h2,h3,h4,h5,h6')[i]?.scrollIntoView({block:'start',behavior:'smooth'});return;}
     view.dispatch({selection:{anchor:h.from},effects:EditorView.scrollIntoView(h.from,{y:'start',yMargin:24})});view.focus();
   }
-  async function find(){if(mode==='preview')await setMode('write');openSearchPanel(view);}
+  async function find(){if(mode==='preview')await setMode('live');openSearchPanel(view);}
   function imageEvent(event){
     const files=[...(event.clipboardData?.files||event.dataTransfer?.files||[])].filter(f=>f.type.startsWith('image/'));
     if(!files.length)return false;
@@ -114,14 +116,15 @@
   const zh={'Find':'查找','Replace':'替换','next':'下一处','previous':'上一处','all':'全选','match case':'区分大小写','regexp':'正则表达式','by word':'整词','replace':'替换','replace all':'全部替换','close':'关闭','Go to line':'跳转到行','go':'跳转'};
   onMount(()=>{
     try{prefs=writingPreferences(JSON.parse(localStorage.getItem(storageKey)||'{}'));}catch{}
+    try{const savedMode=localStorage.getItem('wonder-writing-mode');if(['live','write','split','preview'].includes(savedMode))mode=savedMode;}catch{}
     const splitMedia=window.matchMedia('(max-width:700px)');
     const updateOrientation=()=>{verticalSplit=splitMedia.matches;};
     updateOrientation();splitMedia.addEventListener('change',updateOrientation);
     view=new EditorView({parent:host,state:EditorState.create({doc:value,extensions:[
-      history(),drawSelection(),highlightActiveLine(),EditorView.lineWrapping,
+      history(),drawSelection(),highlightActiveLine(),EditorView.lineWrapping,rendering.of(mode==='live'?liveMarkdown({resolveImage}):[]),
       markdown({base:markdownLanguage,codeLanguages:languages}),bracketMatching(),closeBrackets(),indentUnit.of('  '),
       syntaxHighlighting(defaultHighlightStyle),syntaxHighlighting(HighlightStyle.define([
-        {tag:tags.heading,color:'var(--btn-content)',fontWeight:'700'},
+        {tag:tags.heading,color:'var(--btn-content)',fontWeight:'700',textDecoration:'none'},
         {tag:tags.strong,fontWeight:'700'},{tag:tags.emphasis,fontStyle:'italic'},
         {tag:tags.link,color:'var(--btn-content)',textDecoration:'underline'},
         {tag:tags.monospace,color:'var(--inline-code-color)'},
@@ -145,7 +148,8 @@
 <div class="writing-workbench" style={`--writing-font:${prefs.fontSize}px;--writing-leading:${prefs.lineHeight}`}>
   <div class="writing-controls">
     <div class="view-modes" aria-label="编辑视图">
-      <button class:chosen={mode==='write'} aria-pressed={mode==='write'} on:click={()=>setMode('write')}>编辑</button>
+      <button class:chosen={mode==='live'} aria-pressed={mode==='live'} on:click={()=>setMode('live')}>即时渲染</button>
+      <button class:chosen={mode==='write'} aria-pressed={mode==='write'} on:click={()=>setMode('write')}>源码</button>
       <button class:chosen={mode==='split'} aria-pressed={mode==='split'} on:click={()=>setMode('split')}>分屏</button>
       <button class:chosen={mode==='preview'} aria-pressed={mode==='preview'} on:click={()=>setMode('preview')}>预览</button>
     </div>
@@ -198,10 +202,10 @@
       {#if mode==='split'}
         <div class="split-handle" role="separator" tabindex="0" aria-label="调整编辑与预览比例" aria-orientation={verticalSplit?'horizontal':'vertical'} aria-valuemin="25" aria-valuemax="75" aria-valuenow={Math.round(prefs.splitRatio)} aria-valuetext={`编辑区 ${Math.round(prefs.splitRatio)}%，预览区 ${100-Math.round(prefs.splitRatio)}%`} title="拖动调整比例；双击或按 Enter 恢复均分" on:pointerdown={startResize} on:pointermove={moveResize} on:pointerup={endResize} on:pointercancel={endResize} on:lostpointercapture={endResize} on:keydown={splitKey} on:dblclick={resetSplit}></div>
       {/if}
-      {#if mode!=='write'}<article class="writing-preview" class:wide={prefs.wide} bind:this={previewPane} aria-label="文章预览">{#if value}<div>{@html preview}</div>{:else}<p class="preview-hint">你的文字，会在这里慢慢成形。</p>{/if}</article>{/if}
+      {#if mode==='split'||mode==='preview'}<article class="writing-preview" class:wide={prefs.wide} bind:this={previewPane} aria-label="文章预览">{#if value}<div>{@html preview}</div>{:else}<p class="preview-hint">你的文字，会在这里慢慢成形。</p>{/if}</article>{/if}
     </div>
   </div>
-  <div class="writing-status"><span>{value.length.toLocaleString()} 字符 · 第 {line} 行，第 {column} 列</span><span class="keyboard-hint">Markdown · Tab 缩进 · Esc 后 Tab 离开编辑器</span><span>{uploading?'图片上传中…':'图片可粘贴或拖入'}</span></div>
+  <div class="writing-status"><span>{value.length.toLocaleString()} 字符 · 第 {line} 行，第 {column} 列</span><span class="keyboard-hint">{mode==='live'?'点击文字编辑语法':'Markdown'} · Tab 缩进 · Esc 后 Tab 离开编辑器</span><span>{uploading?'图片上传中…':'图片可粘贴或拖入'}</span></div>
 </div>
 
 <style>

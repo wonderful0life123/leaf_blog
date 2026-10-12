@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {publicationConfig} from './publications.mjs';
 export function serverConfig(env=process.env) {
   const required=name=>{const value=env[name]?.trim();if(!value||value.startsWith('REPLACE_'))throw new Error(`缺少配置 ${name}`);return value;};
   const origin=new URL(required('WONDER_STUDIO_ORIGIN'));
@@ -17,5 +18,5 @@ export function serverConfig(env=process.env) {
     if(within(dataDir,publicRoot)||within(publicRoot,dataDir))throw new Error('草稿目录必须与源码、笔记和公开文件目录分开');
   }
   return {origin:origin.origin,secure:!devHttp,ownerId,port,dataDir,webDir,sourceRoots,
-    clientId:required('WONDER_GITHUB_CLIENT_ID'),clientSecret:required('WONDER_GITHUB_CLIENT_SECRET')};
+    publication:publicationConfig(env),clientId:required('WONDER_GITHUB_CLIENT_ID'),clientSecret:required('WONDER_GITHUB_CLIENT_SECRET')};
 }
