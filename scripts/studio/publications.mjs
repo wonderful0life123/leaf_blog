@@ -28,12 +28,12 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
   function save(job){job.updatedAt=new Date().toISOString();writeJson(path.join(root,job.id,'job.json'),job);return job;}
   function list(){return fs.readdirSync(root).filter(id=>uuid.test(id)).map(read).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
   // A restart never replays a push automatically. The saved commit allows explicit reconciliation.
-  for(const job of list())if(['building','publishing'].includes(job.state)){job.state=job.commit?'retry':'failed';job.error='服务曾中断。草稿已保留；请重新检查或重试已确认的发布。';save(job);}
+  for(const job of list())if(['building','publishing'].includes(job.state)){if(!job.built)job.finishedAt=new Date().toISOString();job.state=job.commit?'retry':'failed';job.error='服务曾中断。草稿已保留；请重新检查或重试已确认的发布。';save(job);}
   function usePublishedSource(job){if(sourceRoots&&job?.state==='published'&&job.codeRevision===config?.codeRevision)sourceRoots.blog=path.join(root,job.id,'work/src/content/posts');}
   usePublishedSource(list().find(job=>job.state==='published'));
-  const view=job=>({id:job.id,draftId:job.draftId,revision:job.revision,state:job.state,title:job.title,path:job.path,url:job.url,description:job.description,published:job.published,imageCount:job.imageCount,warnings:job.warnings||[],error:job.error||'',commit:job.commit||'',createdAt:job.createdAt,previewUrl:job.built?`/studio-api/publications/${job.id}/preview${job.url}`:null,enabled:!!config?.enabled});
+  const view=job=>({id:job.id,draftId:job.draftId,revision:job.revision,state:job.state,title:job.title,path:job.path,url:job.url,description:job.description,published:job.published,imageCount:job.imageCount,warnings:job.warnings||[],error:job.error||'',commit:job.commit||'',createdAt:job.createdAt,phase:job.phase||null,timings:job.timings||[],elapsedMs:job.timings?Math.max(0,(Date.parse(job.finishedAt)||Date.now())-Date.parse(job.createdAt)):null,reused:!!job.reused,previewUrl:job.built?`/studio-api/publications/${job.id}/preview${job.url}`:null,enabled:!!config?.enabled});
   function unchanged(job){const draft=store.get(job.draftId);if(draft.deletedAt||draft.revision!==job.revision)throw new StoreError(409,'草稿已发生变化，请重新检查并预览后再发布。');}
-  function launch(job,task){active=job.id;Promise.resolve().then(task).catch(error=>{job.state=job.commit?'retry':'failed';job.error=error instanceof StoreError?error.message:'发布未完成，草稿与原网站均保留。请联系部署方检查。';save(job);}).finally(()=>active=null);}
+  function launch(job,task){active=job.id;Promise.resolve().then(task).catch(error=>{if(!job.built)job.finishedAt=new Date().toISOString();job.state=job.commit?'retry':'failed';job.error=error instanceof StoreError?error.message:'发布未完成，草稿与原网站均保留。请联系部署方检查。';save(job);}).finally(()=>active=null);}
   return {
     decorate(drafts){const jobs=list();return drafts.map(draft=>{const published=jobs.find(j=>j.draftId===draft.id&&j.state==='published');return published?{...draft,status:published.revision===draft.revision?'published':'draft',publication:{revision:published.revision,path:published.path,url:published.url,commit:published.commit}}:draft;});},
     info(draftId){
@@ -51,19 +51,34 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
       const last=history.find(j=>j.state==='published');
       const target=articlePath(input.path);
       if(last&&target!==last.path)throw new StoreError(409,'已发布文章沿用原路径，不能在这里修改网址。');
-      const job={id:randomUUID(),draftId,revision:draft.revision,state:'building',codeRevision:config?.codeRevision,title:draft.title,path:target,description:input.description,published:input.published,createdAt:new Date().toISOString()};
+      const job={id:randomUUID(),draftId,revision:draft.revision,state:'building',buildVersion:2,timings:[],codeRevision:config?.codeRevision,title:draft.title,path:target,description:input.description,published:input.published,createdAt:new Date().toISOString()};
       fs.mkdirSync(path.join(root,job.id),{mode:0o700});save(job);
       launch(job,async()=>{
-        job.base=await driver.head();save(job);
-        const workspace=await driver.prepare(path.join(root,job.id),job.base);
-        const posts=path.join(workspace,'src/content/posts'),file=path.join(posts,target);
-        if(!fs.realpathSync(posts).startsWith(fs.realpathSync(workspace)+path.sep))throw new StoreError(422,'文章目录不能指向构建目录外。');
-        if(fs.existsSync(file)&&!fs.realpathSync(file).startsWith(fs.realpathSync(posts)+path.sep))throw new StoreError(422,'文章来源路径越界。');
-        const previous=fs.existsSync(file)?fs.readFileSync(file,'utf8'):'';
-        const content=publicationContent(draft,input,{previous,expectedHash:last?.articleHash||(draft.source?.root==='blog'?draft.source.baseHash:null),media:id=>store.media(id)});
-        writeContent(posts,target,content.text);for(const image of content.images)writeContent(posts,image.path,image.bytes);
-        job.files=[target,...content.images.map(i=>i.path)].map(p=>'src/content/posts/'+p);job.articleHash=content.hash;job.url=content.url;job.imageCount=content.images.length;job.warnings=content.warnings;save(job);
-        await driver.build(workspace,job.url);unchanged(job);job.built=true;job.state='ready';save(job);
+        async function step(stage,task){
+          const started=Date.now();job.phase={stage,startedAt:new Date(started).toISOString()};save(job);
+          let status='failed';
+          try{const result=await task();status='complete';return result;}
+          finally{job.timings.push({stage,durationMs:Date.now()-started,status});save(job);}
+        }
+        job.base=await step('source',()=>driver.head());save(job);
+        const workspace=await step('workspace',()=>driver.prepare(path.join(root,job.id),job.base));
+        await step('content',async()=>{
+          const posts=path.join(workspace,'src/content/posts'),file=path.join(posts,target);
+          if(!fs.realpathSync(posts).startsWith(fs.realpathSync(workspace)+path.sep))throw new StoreError(422,'文章目录不能指向构建目录外。');
+          if(fs.existsSync(file)&&!fs.realpathSync(file).startsWith(fs.realpathSync(posts)+path.sep))throw new StoreError(422,'文章来源路径越界。');
+          const previous=fs.existsSync(file)?fs.readFileSync(file,'utf8'):'';
+          const content=publicationContent(draft,input,{previous,expectedHash:last?.articleHash||(draft.source?.root==='blog'?draft.source.baseHash:null),media:id=>store.media(id)});
+          writeContent(posts,target,content.text);for(const image of content.images)writeContent(posts,image.path,image.bytes);
+          job.files=[target,...content.images.map(i=>i.path)].map(p=>'src/content/posts/'+p);job.articleHash=content.hash;job.url=content.url;job.imageCount=content.images.length;job.warnings=content.warnings;save(job);
+        });
+        // Only an identical article, assets, code and source commit may reuse a
+        // complete output. Check HEAD above even for a cache hit; confirm checks
+        // it again before any commit. Each job owns its own immutable copy.
+        const cached=history.find(j=>j.built&&j.buildVersion===job.buildVersion&&j.state==='ready'&&j.base===job.base&&j.codeRevision===job.codeRevision&&j.revision===job.revision&&j.path===job.path&&j.articleHash===job.articleHash&&fs.existsSync(path.join(root,j.id,'work/dist',job.url,'index.html')));
+        if(cached){
+          await step('reuse',async()=>fs.cpSync(path.join(root,cached.id,'work/dist'),path.join(workspace,'dist'),{recursive:true}));job.reused=true;
+        }else await step('build',()=>driver.build(workspace,job.url,step));
+        unchanged(job);job.built=true;job.state='ready';job.phase=null;job.finishedAt=new Date().toISOString();save(job);
       });
       return view(job);
     },

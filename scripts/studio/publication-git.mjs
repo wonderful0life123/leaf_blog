@@ -10,7 +10,13 @@ export function gitPublisher(config) {
   const env={PATH:process.env.PATH,HOME:process.env.HOME,LANG:'C.UTF-8',GIT_TERMINAL_PROMPT:'0',ASTRO_TELEMETRY_DISABLED:'1'};
   // Commands and destinations come only from the server config, never HTTP input.
   async function run(command,args,cwd=repo,extra={}) {
-    try{return (await execute(command,args,{cwd,env,timeout:600_000,maxBuffer:8*1024*1024,...extra})).stdout.trim();}
+    try{
+      const result=await execute(command,args,{cwd,env,timeout:600_000,maxBuffer:8*1024*1024,...extra});
+      // Retain successful build output as well: slow builds need route/image timings,
+      // not just a log after a failure. These logs stay outside the preview dist.
+      if(command===process.execPath)fs.appendFileSync(path.join(path.dirname(cwd),'build.log'),result.stdout+result.stderr,{mode:0o600});
+      return result.stdout.trim();
+    }
     catch(error){if(command!=='git')fs.appendFileSync(path.join(path.dirname(cwd),'build.log'),String(error.stdout||'')+String(error.stderr||''),{mode:0o600});fail(command==='git'?'仓库操作未完成，请检查网络或发布权限后重试。':'构建未通过，网站保持原状。请检查文章格式及构建环境。');}
   }
   async function head(){
@@ -37,10 +43,10 @@ export function gitPublisher(config) {
       fs.symlinkSync(fs.realpathSync(path.join(repo,'node_modules')),path.join(workspace,'node_modules'),'dir');
       return workspace;
     },
-    async build(workspace,url){
-      await run(process.execPath,['scripts/generate-icons.js'],workspace);
-      await run(process.execPath,['node_modules/astro/bin/astro.mjs','build'],workspace);
-      await run(process.execPath,['node_modules/pagefind/lib/runner/bin.cjs','--site','dist'],workspace);
+    async build(workspace,url,step=(_name,task)=>task()){
+      await step('icons',()=>run(process.execPath,['scripts/generate-icons.js'],workspace));
+      await step('site',()=>run(process.execPath,['node_modules/astro/bin/astro.mjs','build'],workspace));
+      await step('search',()=>run(process.execPath,['node_modules/pagefind/lib/runner/bin.cjs','--site','dist'],workspace));
       const dist=path.join(workspace,'dist'),article=path.join(dist,url,'index.html');
       if(!fs.existsSync(article)||fs.existsSync(path.join(dist,'studio-static')))fail('构建产物不完整或包含私有前端，已停止发布。');
       return dist;

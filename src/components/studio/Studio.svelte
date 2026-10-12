@@ -21,6 +21,8 @@
   let bodyEditor, publishing = false, timer, toastTimer;
   let publishInfo=null, publication=null, publishError='',publishConsent=false,publishTimer;
   let publishPath='',publishDescription='',publishDate='';
+  const publicationStages={source:'核对博客版本',workspace:'准备预览环境',content:'检查正文与图片',build:'构建博客',icons:'准备图标',site:'生成博客页面与图片',search:'生成搜索索引',reuse:'读取已有预览'};
+  const duration=ms=>ms<1000?'不到 1 秒':ms<60000?`${Math.round(ms/1000)} 秒`:`${Math.floor(ms/60000)} 分 ${Math.floor(ms%60000/1000)} 秒`;
   let dirty = false, saving = false, saveError = '', conflict = false, editVersion = 0, saveTask = null;
   let recoveryWarning = '', loadError = '';
   $: folders = [...new Set(notes.map(n=>n.folder))].sort();
@@ -192,11 +194,11 @@
     const heading=doc.querySelector('main h1');
     if(heading){heading.style.scrollMarginTop='6rem';heading.scrollIntoView({block:'start'});}
   }
-  function pollPublication(){
+  function pollPublication(delay=1500){
     clearTimeout(publishTimer);
     if(!publication||!['building','publishing'].includes(publication.state)||dialog!=='publish')return;
     const id=publication.id;
-    publishTimer=setTimeout(async()=>{try{const result=await request('/publications/'+id);if(publication?.id===id){publication=result.publication;if(publication.state==='published'){await refreshDrafts();if(serverMode){const catalog=await request('/catalog');articles=catalog.articles;}const fresh=drafts.find(d=>d.id===current?.id);if(fresh)current={...current,publication:fresh.publication,status:fresh.status};}pollPublication();}}catch(e){publishError=e.message;}},1500);
+    publishTimer=setTimeout(async()=>{try{const result=await request('/publications/'+id);if(publication?.id===id){publication=result.publication;publishError='';if(publication.state==='published'){await refreshDrafts();if(serverMode){const catalog=await request('/catalog');articles=catalog.articles;}const fresh=drafts.find(d=>d.id===current?.id);if(fresh)current={...current,publication:fresh.publication,status:fresh.status};}pollPublication();}}catch(e){if(publication?.id===id){publishError=e.status===401?'登录已过期，请重新登录后查看任务。':'暂时无法获取进度，后台任务仍会继续，正在重试连接…';if(e.status!==401)pollPublication(5000);}}},delay);
   }
   async function preparePublication(){
     publishing=true;publishError='';publishConsent=false;
@@ -327,7 +329,7 @@
 {/if}
 {#if notice}<div class="toast" role="status" use:portal>✓ {notice}</div>{/if}
 {#if dialog}
-  <div class="overlay" use:portal role="presentation" on:click={e=>{if(e.target===e.currentTarget&&!publishing&&!busy)dialog='';}}>
+  <div class="overlay" use:portal role="presentation" on:click={e=>{if(dialog!=='publish'&&e.target===e.currentTarget&&!publishing&&!busy)dialog='';}}>
     <div class="modal card-base" class:import-modal={dialog==='import'} class:publication-modal={dialog==='publish'} role="dialog" aria-modal="true" aria-label={dialog==='draft-action'?'草稿操作确认':dialog==='import'?'从笔记导入':dialog==='publish'?'预览与发布':'预览说明'} tabindex="-1"><div class="modal-heading"><div><span class="eyebrow">wonder · 写作空间</span><h2>{dialog==='draft-action'?(pendingAction?.action==='purge'?'彻底删除草稿？':'移入回收站？'):dialog==='import'?'从笔记里，挑一个想法。':dialog==='publish'?'预览与发布':dialog==='account'?(serverMode?'GitHub 账号':'当前使用本机写作'):'草稿保存说明'}</h2></div><button aria-label="关闭弹窗" disabled={publishing||busy} on:click={()=>dialog=''}>✕</button></div>
     {#if dialog==='draft-action'&&pendingAction}<p class="modal-copy">{pendingAction.article.title||'未命名文章'}</p><p class="modal-copy">{pendingAction.action==='purge'?'彻底删除后，无法从回收站恢复此草稿。此操作不会删除博客原文或其他草稿共用的图片。':'正文和图片引用会保留，可在回收站恢复。此操作不会删除已发布的博客原文。'}</p><div class="modal-footer"><button disabled={busy} on:click={()=>dialog=''}>取消</button><button class:danger={pendingAction.action==='purge'} disabled={busy} on:click={()=>manageDraft(pendingAction.article,pendingAction.action)}>{busy?'正在处理…':pendingAction.action==='purge'?'确认彻底删除':'确认移入回收站'}</button></div>
     {:else if dialog==='import'}<div class="import-tools"><label class="search">⌕ <input aria-label="搜索笔记" placeholder="搜索笔记名称或目录…" bind:value={noteQuery}/></label><select aria-label="笔记目录" bind:value={folder}><option value="all">全部目录 · {notes.length} 篇</option>{#each folders as f}<option value={f}>{f}</option>{/each}</select></div><div class="import-body"><div class="note-list">{#each found as n}<button class:chosen={selected?.id===n.id} on:click={()=>selected=n}><span>{n.title}</span><small>{n.folder}</small>{#if sourcePairs[n.id]}<em>已关联博客</em>{/if}</button>{/each}{#if !found.length}<p class="empty">没有匹配的笔记</p>{/if}</div><div class="note-detail">{#if selected}<span class="category">{selected.folder}</span><h2>{selected.title}</h2><article class="prose">{@html notePreview}</article>{/if}</div></div><div class="modal-footer"><span>正文与图片一起预览，原笔记保持不变。</span><button class="primary" disabled={!selected||busy||loading} on:click={importNote}>{selected&&(sourcePairs[selected.id]||items.some(a=>a.noteId===selected.id))?'打开已有文章':'导入并保存草稿'} →</button></div>
@@ -343,12 +345,17 @@
         </div>
         {#if publication}
           <div class="publication-status" role="status">
-            {#if publication.state==='building'}正在检查图片并构建博客预览，可以关闭此窗口，稍后回来查看。
+            {#if publication.state==='building'}
+              <strong>{publicationStages[publication.phase?.stage]||'正在准备预览'}…</strong>
+              <span class="publication-elapsed">已等待 {duration(publication.elapsedMs||0)}</span>
+              <p class="publication-progress-copy">可以点“返回写作”继续编辑，任务会在后台运行；再次打开可查看进度。</p>
+              {#if publication.elapsedMs>=60000}<p class="publication-progress-copy">本次等待较久，请勿重复生成。下方耗时记录可帮助定位慢在哪一步。</p>{/if}
             {:else if publication.state==='publishing'}正在提交 GitHub 并更新博客，请勿重复操作。
-            {:else if publication.state==='ready'}✓ 构建检查通过 · 第 {publication.revision} 版 · {publication.imageCount} 张本地图片
+            {:else if publication.state==='ready'}✓ 构建检查通过 · 第 {publication.revision} 版 · {publication.imageCount} 张本地图片{#if publication.elapsedMs!=null} · {publication.reused?'已复用预览，':''}用时 {duration(publication.elapsedMs)}{/if}
             {:else if publication.state==='published'}✓ 已发布到博客 · 提交 {publication.commit.slice(0,8)}
             {:else}{publication.error}{/if}
           </div>
+          {#if publication.timings?.length}<details class="publication-timings"><summary>查看各阶段耗时</summary><ul>{#each publication.timings as timing}<li><span>{timing.stage==='build'?'构建合计':publicationStages[timing.stage]||timing.stage}{timing.status==='failed'?'（未完成）':''}</span><span>{duration(timing.durationMs)}</span></li>{/each}</ul></details>{/if}
           {#each publication.warnings as warning}<p class="publication-warning">{warning}</p>{/each}
           {#if publication.previewUrl}<p class="preview-caption">博客排版预览 · 链接、播放器等交互功能在发布后可用</p><iframe class="publication-preview" title="博客文章构建预览" src={publication.previewUrl} on:load={stylePublicationPreview} sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>{/if}
           {#if publication.state==='published'}<p class="modal-copy"><a class="published-link" href={publication.url} target="_blank" rel="noopener noreferrer" data-no-swup>查看已发布文章 ↗</a> · 草稿副本继续保留，可修改后再次发布。</p>{/if}
@@ -500,6 +507,7 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
 .modal-footer>span { font-size:.8rem; color:var(--content-meta); }
 .modal-copy { font-size:.9rem; color:var(--content-meta); line-height:1.9; margin:1.5rem 0; }
 .publication-modal{width:min(1100px,96vw)}
+.publication-elapsed{margin-left:.7rem;color:var(--content-meta);white-space:nowrap}.publication-progress-copy{font-size:.8rem;margin:.5rem 0 0;color:var(--content-meta)}.publication-timings{font-size:.8rem;color:var(--content-meta);margin:.7rem 0}.publication-timings summary{cursor:pointer}.publication-timings ul{max-width:28rem;padding:.5rem 0;list-style:none}.publication-timings li{display:flex;justify-content:space-between;gap:1rem;padding:.2rem 0}
 .publication-fields{display:grid;grid-template-columns:minmax(0,1fr) 180px;gap:1rem;margin:1rem 0}.publication-fields label{display:flex;flex-direction:column;gap:.4rem;font-size:.85rem}.publication-fields small,.preview-caption{color:var(--content-meta);font-size:.75rem}.publication-description{grid-column:1/-1}.publication-description textarea{padding:.7rem;border:1px solid var(--line-divider);border-radius:.6rem;background:var(--card-bg);color:var(--studio-text);resize:vertical}.publication-status{padding:.8rem 1rem;border-radius:.6rem;background:var(--btn-regular-bg);font-size:.85rem}.publication-warning{font-size:.8rem;color:var(--content-meta);margin:.5rem 0}.publication-preview{width:100%;height:55vh;border:1px solid var(--line-divider);border-radius:.7rem;background:white;margin:.5rem 0 1rem}.publish-consent{display:flex;align-items:flex-start;gap:.6rem;font-size:.85rem;line-height:1.7;margin:1rem 0}.publish-consent input{margin-top:.35rem}.published-link{color:var(--primary);text-decoration:underline}.preview-caption{margin-top:1rem}
 @media(max-width:700px){.publication-fields{grid-template-columns:1fr}.publication-preview{height:50vh}}
 .empty { padding:2rem; font-size:.9rem; color:var(--content-meta); text-align:center; }

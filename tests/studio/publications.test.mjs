@@ -58,6 +58,34 @@ test('本机预览模式拒绝发布，开启发布必须指定独立分支和�
  const job=manager.prepare(draft.id,{...input,revision:1});await settled(manager,job.id);assert.throws(()=>manager.confirm(job.id,{revision:1,confirm:true}),/私密预览/);
  assert.throws(()=>publicationConfig({WONDER_PUBLISH_REPO_DIR:root,WONDER_PUBLISH_ENABLED:'1',WONDER_PUBLISH_BRANCH:'master'}),/不允许/);
 });
+test('相同文章复用完整构建，但仍核对源版本；草稿或远端变化必须重建',async t=>{
+ const {root,store,draft}=fixture(t),driver=mockDriver(root);let builds=0;
+ const build=driver.build;driver.build=async(...args)=>{builds++;return build(...args);};
+ const manager=openPublications({dataDir:path.join(root,'data'),store,config:{enabled:true},adapter:driver});
+ const request={...input,revision:1};
+ const first=manager.prepare(draft.id,request);await settled(manager,first.id);
+ const second=manager.prepare(draft.id,request),reused=await settled(manager,second.id);
+ assert.equal(reused.state,'ready');assert.equal(builds,1);assert.equal(reused.reused,true);
+ assert.ok(manager.preview(second.id,'posts/writing/test/').bytes.toString().includes('article'));
+ assert.ok(reused.timings.some(t=>t.stage==='reuse'&&t.durationMs>=0));
+ driver.changeHead();await settled(manager,manager.prepare(draft.id,request).id);assert.equal(builds,2);
+ store.update(draft.id,{...draft,body:'changed',revision:1});
+ await settled(manager,manager.prepare(draft.id,{...input,revision:2}).id);assert.equal(builds,3);
+ const changed=manager.prepare(draft.id,{...input,description:'new summary',revision:2});await settled(manager,changed.id);assert.equal(builds,4);
+ assert.deepEqual(driver.counts(),{pushes:0,deploys:0});
+});
+test('构建任务返回当前阶段、成功和失败的耗时，不暴露命令日志',async t=>{
+ const {root,store,draft}=fixture(t),driver=mockDriver(root);let release;
+ driver.build=async(work,url,step)=>step('site',()=>new Promise((resolve,reject)=>{release=()=>reject(Error('private command output'));}));
+ const manager=openPublications({dataDir:path.join(root,'data'),store,config:{enabled:false},adapter:driver});
+ const job=manager.prepare(draft.id,{...input,revision:1});
+ for(let i=0;!release&&i<50;i++)await new Promise(r=>setTimeout(r,2));
+ assert.equal(manager.get(job.id).phase.stage,'site');assert.ok(manager.get(job.id).elapsedMs>=0);
+ release();const failed=await settled(manager,job.id);
+ assert.equal(failed.state,'failed');assert.ok(failed.timings.some(t=>t.stage==='site'&&t.status==='failed'));
+ assert.ok(!JSON.stringify(failed).includes('private command output'));const elapsed=failed.elapsedMs;
+ await new Promise(r=>setTimeout(r,10));assert.equal(manager.get(job.id).elapsedMs,elapsed);
+});
 test('真实隔离 Git 提交仅包含选中文章，正常推送与原子上线保留旧资源和原工作区',async t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'wonder-publish-git-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const repo=path.join(root,'repo'),remote=path.join(root,'remote.git');fs.mkdirSync(repo);
  const git=(args,cwd=repo)=>execFileSync('git',args,{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
