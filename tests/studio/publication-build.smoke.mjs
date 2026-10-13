@@ -14,7 +14,7 @@ const git=(args,cwd=root)=>execFileSync('git',args,{cwd,encoding:'utf8',stdio:['
 let store,passed=false;
 try {
   git(['clone','--shared','--no-hardlinks',source,repo]);git(['init','--bare',remote]);git(['config','receive.shallowUpdate','true'],remote);git(['remote','set-url','origin',remote],repo);git(['checkout','-b','feat/publish-test'],repo);git(['push','origin','feat/publish-test'],repo);
-  fs.symlinkSync(path.join(source,'node_modules'),path.join(repo,'node_modules'),'dir');fs.appendFileSync(path.join(repo,'.git/info/exclude'),'\nnode_modules\n');
+  fs.symlinkSync(path.join(source,'node_modules'),path.join(repo,'node_modules'),'dir');fs.symlinkSync(path.join(source,'.studio-preview'),path.join(repo,'.studio-preview'),'dir');fs.appendFileSync(path.join(repo,'.git/info/exclude'),'\nnode_modules\n.studio-preview\n');
   const releases=path.join(root,'releases'),live=path.join(root,'current');fs.mkdirSync(path.join(releases,'before'),{recursive:true});fs.writeFileSync(path.join(releases,'before/index.html'),'old');fs.symlinkSync(path.join(releases,'before'),live);
   const sourceRoots={blog:path.join(repo,'src/content/posts')};
   store=openStore({dataDir:path.join(root,'data'),sourceRoots});
@@ -35,7 +35,7 @@ try {
   for(let round=0;round<2;round++){
     const input={revision:draft.revision,path:'writing/publish-smoke.md',description:'isolated',published:'2026-10-12'};
     let job=manager.prepare(draft.id,input);
-    let ready=await wait(job.id);assert.equal(ready.state,'ready',JSON.stringify(ready));assert.equal(ready.imageCount,1);
+    let ready=await wait(job.id);assert.equal(ready.state,'ready',JSON.stringify(ready));assert.equal(ready.imageCount,1);assert.equal(ready.previewOnly,true);assert.ok(!fs.existsSync(path.join(root,'data/publications',job.id,'work/dist')),'preview must not build deployable output');
     if(round===0){job=manager.prepare(draft.id,input);ready=await wait(job.id);assert.equal(ready.state,'ready',JSON.stringify(ready));assert.equal(ready.reused,true);}
     const preview=manager.preview(job.id,'posts/writing/publish-smoke/').bytes.toString();assert.ok(preview.includes('Build verification'));assert.ok(preview.includes('katex'));assert.ok(!preview.includes('<script'));
     manager.confirm(job.id,{revision:draft.revision,confirm:true});const done=await wait(job.id);assert.equal(done.state,'published',JSON.stringify(done));commits.push(done.commit);

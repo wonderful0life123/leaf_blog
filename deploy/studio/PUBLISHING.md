@@ -1,21 +1,21 @@
 # 文章预览与发布：服务器接入及验收
 
-本次增加真正的 Astro 构建预览、选中文章的 Git 提交和博客源站的原子切换。需要更新后端并重启 Studio；草稿 SQLite 仍为 v2，不迁移正文、图片或 OAuth 数据。不要按纯前端升级处理。
+预览采用单篇 Markdown 渲染；确认发布后才运行完整 Astro 构建、选中文章的 Git 提交和博客源站的原子切换。需要更新后端并重启 Studio；草稿 SQLite 仍为 v2，不迁移正文、图片或 OAuth 数据。不要按纯前端升级处理。
 
 ## 行为与边界
 
 1. 自动保存仍在私密草稿库。点击“检查并生成预览”只在数据目录内工作，不推送。
 2. 每次检查绑定草稿 revision 和 Git 分支 HEAD。现有博客文章检查 source.baseHash；再次发布检查上一次文章 hash，防止覆盖外部修改。
 3. 文章路径与分类分开。新路径使用小写英文、数字和短横线，支持多层目录。现有文章沿用路径。图片存到文章旁的 `assets/<文章文件名>/<sha256>.<扩展名>`，只复制当前正文引用的图片，不删除共享图片。
-4. 本期支持普通 Markdown、代码、公式和 Markdown 图片。原始 HTML、MDX、加密文章阻止网页发布，需沿用本地方式。预览是实际构建 HTML，禁用脚本、导航和表单；动态 Mermaid、播放器等交互不在这个静态预览内运行。
-5. 用户勾选公开提示并点击“确认发布”后，才向 leaf_blog 配置分支提交。只暂存选中文章和图片，普通 fast-forward push，不 force、不 reset 现有工作区、不修改 obsidian_note。
+4. 本期支持普通 Markdown、代码、公式和 Markdown 图片。原始 HTML、MDX、加密文章阻止网页发布，需沿用本地方式。预览复用博客的 Markdown 插件、Expressive Code 和文章 CSS，展示单篇正文而非完整站点横幅、侧栏；图片直接使用已验证的原图，不运行全站图片优化。预览禁用脚本、导航和表单；动态 Mermaid、播放器等交互不在这个静态预览内运行。
+5. 用户勾选公开提示并点击“确认发布”后，才运行 icons → Astro → Pagefind 完整构建，成功且再次核对草稿/分支后，向 leaf_blog 配置分支提交。只暂存选中文章和图片，普通 fast-forward push，不 force、不 reset 现有工作区、不修改 obsidian_note。
 6. GitHub 提交后才切换源站产物。失败保留草稿；提交成功但切换失败会记录 commit，用户点“重试上线”时先核对远端，避免重复提交。旧产物保留。
 7. 本期不监听任意本地 Git 推送。代码更新仍由服务器部署方同步双前端；旧 master timer 保持禁用。
 8. 成功发布后，Studio 文章目录读取最新已发布任务的源文件快照，立即反映新文章；重启也会恢复同一快照。更新发布基准 SHA 时，部署方须同步既有博客只读来源目录到最新内容，避免列表回到旧版本。不要删除最新已发布任务的 work 目录。
 
 ## 先隔离验收，再启用生产发布
 
-保留现有 OAuth/网络修复、服务环境、草稿、图片和 Nginx 既有代理。后端新增三个 publication 模块，并修改 config/http/server；本地 plugin 仅供开发。先审查差异，不用整仓库覆盖服务器本地修改。
+保留现有 OAuth/网络修复、服务环境、草稿、图片和 Nginx 既有代理。本次后端更新 publications/publication-git，并新增 publication-preview.mjs 和 preview-worker.mjs；本地 plugin 仅供开发。先审查差异，不用整仓库覆盖服务器本地修改。
 
 - 固定到交接提交安装依赖，运行 `pnpm run studio:test`、`pnpm build`、`pnpm run studio:build`。构建过程内部直接调用已安装的 Node 构建入口，步骤等同 generate-icons → astro build → pagefind，避免运行时自动安装依赖。
 - 用本机临时 bare Git remote、隔离数据目录、隔离公开目录演练新文章和图片、第二次发布、冲突及失败恢复。自动验收不得写入真实 GitHub 或生产草稿。
@@ -85,21 +85,28 @@ WONDER_PUBLISH_ENABLED=0
 
 ## 预览耗时诊断与复用
 
-预览仍使用完整博客构建产物，不用编辑器渲染代替正式排版；发布继续需要用户确认。点击发布窗口外部不再关闭窗口，关闭按钮、返回写作和 Escape 仍可退出。生成过程中可退出再打开查看同一任务，短暂轮询断网会自动重试，不触发新构建。
+预览只渲染当前文章，不调用 Astro/Vite 全站编译；发布继续需要用户确认。共享配置在 `src/markdown.config.ts`；受信任的服务端渲染模块和文章样式通过 `pnpm run studio:preview:build` 预先编译成 `.studio-preview/`。`studio:build`、`studio:test` 和本地 `studio` 已包含这一步。运行时复用隔离 Worker，30 秒超时退出，不静默回退到全站预览。点击发布窗口外部不再关闭窗口，关闭按钮、返回写作和 Escape 仍可退出。生成过程中可退出再打开查看同一任务，短暂轮询断网会自动重试，不触发新构建。
 
 任务 API 和私密 `job.json` 新增 `phase`、`timings`、`elapsedMs` 和 `reused`；旧任务没有耗时记录时不推测用时。各阶段为：
 
 - `source`：核对源提交（开启发布时包含 Git fetch）。
 - `workspace`：展开源文件和连接已安装依赖。
 - `content`：校验正文、元数据和图片。
-- `icons`、`site`、`search`：图标、Astro 页面和图片、Pagefind 搜索索引。
+- `render`：仅渲染当前 Markdown、复制其图片和预编译主题资源；新任务 `previewOnly=true`。
+- `icons`、`site`、`search`（仅确认发布后）：图标、Astro 页面和图片、Pagefind 搜索索引。
 - `build` 是上述三个构建阶段的合计，不能与它们重复相加。
-- `reuse`：文章版本、摘要/日期等生成内容、图片内容、源提交和代码基准都匹配时，复制已成功构建的完整产物。仍会重新核对源提交，确认发布时继续做版本冲突检查；失败任务不复用。
+- `reuse`：文章版本、摘要/日期等生成内容、图片内容、源提交和代码基准都匹配时，复制已成功渲染的单篇预览产物。仍会重新核对源提交，确认发布时继续做版本冲突检查；失败任务不复用。
 
-本机隔离基准（2026-10-13，有现有图片缓存）首次预览约 12.1 秒，相同请求复用约 0.4 秒，修改正文后重建约 12.8 秒。该数据不代表服务器耗时，也未证明线上几分钟等待已解决。首次构建路径未改为增量构建。
-
+本机隔离实测（2026-10-13，小文章，包含代码、公式、表格、提示块和图片）：首次约 1.24 秒，修改正文约 0.40 秒，相同请求约 0.45 秒。该数据不是服务器性能承诺；服务器应按相同三场景重新测量。`node --test tests/studio/publication-preview.test.mjs` 验证真实 Git 工作区准备与渲染，任一预览超过 10 秒或触发全站构建都会失败。
 服务器部署验证应保留发布关闭状态，先在同一服务账号及权限限制下运行 `node tests/studio/publication-build.smoke.mjs`。该命令仅使用临时草稿库、临时本地裸 Git 仓库和临时上线目录，不提交 GitHub、不切换公网博客。原五分钟等待上限保留，新增阶段输出和复用断言；失败保留临时诊断目录供核查，成功自动清理。
 
 若仍慢，报告任务各阶段秒数及 Astro 日志中构建、页面生成、图片处理各自的用时，并检查当时 CPU、内存/交换分区、磁盘 I/O，以及服务账号对 Astro 图片缓存目录的读写权限。不要仅扩大超时或启用发布来通过验收。日志可能包含文章内容与内部路径，应在服务器查看，仅返回脱敏阶段摘要；不得把整个 publications 目录放入公开站点。
 
-此改动涉及 `publications.mjs`、`publication-git.mjs` 与双前端；无数据库迁移。部署时保留已有 OAuth/网络修复及环境配置，等待活动任务结束后再重启 Studio 加载后端改动。真实 GitHub 发布仍待单独验收。
+部署必须包含：
+
+- 双前端与后端 `publications.mjs`、`publication-git.mjs`、`publication-preview.mjs`、`preview-worker.mjs`。
+- 在独立发布 checkout（`WONDER_PUBLISH_REPO_DIR`）用同一提交及锁定依赖生成 `.studio-preview/renderer.mjs` 和 `assets/`，服务账号可读。只更新 Studio 前端不够；遗漏时会明确提示预览组件未部署。
+- `.studio-preview/` 是私密运行时构件，不能放进普通 `dist`、`studio-dist` 或公开 Nginx 目录。每个任务把预览输出放在 `work/preview`，仍通过现有鉴权预览接口返回。`work/dist` 仅在用户确认后产生，禁止将 `work/preview` 当作发布产物。
+- 本次无 SQLite 迁移，新任务 buildVersion=3；旧版完整预览继续可读。回滚前保持发布关闭，备份当前任务；旧代码不认识新版单篇预览，不能用旧后端确认这些任务，必须重新检查生成旧版完整构建，或恢复本版后端。不能只回滚 publication-preview 单个模块。
+
+部署时保留已有 OAuth/网络修复及环境配置，等待活动任务结束后再重启 Studio 加载后端改动。真实 GitHub 发布仍待单独验收。

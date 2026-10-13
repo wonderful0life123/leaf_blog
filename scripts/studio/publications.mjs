@@ -28,12 +28,18 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
   function save(job){job.updatedAt=new Date().toISOString();writeJson(path.join(root,job.id,'job.json'),job);return job;}
   function list(){return fs.readdirSync(root).filter(id=>uuid.test(id)).map(read).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
   // A restart never replays a push automatically. The saved commit allows explicit reconciliation.
-  for(const job of list())if(['building','publishing'].includes(job.state)){if(!job.built)job.finishedAt=new Date().toISOString();job.state=job.commit?'retry':'failed';job.error='服务曾中断。草稿已保留；请重新检查或重试已确认的发布。';save(job);}
+  for(const job of list())if(['building','publishing'].includes(job.state)){job.finishedAt=new Date().toISOString();job.state=job.commit?'retry':'failed';job.error='服务曾中断。草稿已保留；请重新检查或重试已确认的发布。';save(job);}
   function usePublishedSource(job){if(sourceRoots&&job?.state==='published'&&job.codeRevision===config?.codeRevision)sourceRoots.blog=path.join(root,job.id,'work/src/content/posts');}
   usePublishedSource(list().find(job=>job.state==='published'));
-  const view=job=>({id:job.id,draftId:job.draftId,revision:job.revision,state:job.state,title:job.title,path:job.path,url:job.url,description:job.description,published:job.published,imageCount:job.imageCount,warnings:job.warnings||[],error:job.error||'',commit:job.commit||'',createdAt:job.createdAt,phase:job.phase||null,timings:job.timings||[],elapsedMs:job.timings?Math.max(0,(Date.parse(job.finishedAt)||Date.now())-Date.parse(job.createdAt)):null,reused:!!job.reused,previewUrl:job.built?`/studio-api/publications/${job.id}/preview${job.url}`:null,enabled:!!config?.enabled});
+  const outputDir=job=>job.previewOnly?'preview':'dist';
+  async function step(job,stage,task){
+    const started=Date.now();job.phase={stage,startedAt:new Date(started).toISOString()};save(job);
+    let status='failed';try{const result=await task();status='complete';return result;}
+    finally{job.timings.push({stage,durationMs:Date.now()-started,status});save(job);}
+  }
+  const view=job=>({previewOnly:!!job.previewOnly,id:job.id,draftId:job.draftId,revision:job.revision,state:job.state,title:job.title,path:job.path,url:job.url,description:job.description,published:job.published,imageCount:job.imageCount,warnings:job.warnings||[],error:job.error||'',commit:job.commit||'',createdAt:job.createdAt,phase:job.phase||null,timings:job.timings||[],elapsedMs:job.timings?Math.max(0,(Date.parse(job.finishedAt)||Date.now())-Date.parse(job.createdAt)):null,reused:!!job.reused,previewUrl:job.built?`/studio-api/publications/${job.id}/preview${job.url}`:null,enabled:!!config?.enabled});
   function unchanged(job){const draft=store.get(job.draftId);if(draft.deletedAt||draft.revision!==job.revision)throw new StoreError(409,'草稿已发生变化，请重新检查并预览后再发布。');}
-  function launch(job,task){active=job.id;Promise.resolve().then(task).catch(error=>{if(!job.built)job.finishedAt=new Date().toISOString();job.state=job.commit?'retry':'failed';job.error=error instanceof StoreError?error.message:'发布未完成，草稿与原网站均保留。请联系部署方检查。';save(job);}).finally(()=>active=null);}
+  function launch(job,task){active=job.id;Promise.resolve().then(task).catch(error=>{job.finishedAt=new Date().toISOString();job.state=job.commit?'retry':'failed';job.error=error instanceof StoreError?error.message:'发布未完成，草稿与原网站均保留。请联系部署方检查。';save(job);}).finally(()=>active=null);}
   return {
     decorate(drafts){const jobs=list();return drafts.map(draft=>{const published=jobs.find(j=>j.draftId===draft.id&&j.state==='published');return published?{...draft,status:published.revision===draft.revision?'published':'draft',publication:{revision:published.revision,path:published.path,url:published.url,commit:published.commit}}:draft;});},
     info(draftId){
@@ -51,18 +57,13 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
       const last=history.find(j=>j.state==='published');
       const target=articlePath(input.path);
       if(last&&target!==last.path)throw new StoreError(409,'已发布文章沿用原路径，不能在这里修改网址。');
-      const job={id:randomUUID(),draftId,revision:draft.revision,state:'building',buildVersion:2,timings:[],codeRevision:config?.codeRevision,title:draft.title,path:target,description:input.description,published:input.published,createdAt:new Date().toISOString()};
+      const job={id:randomUUID(),draftId,revision:draft.revision,state:'building',buildVersion:3,previewOnly:true,timings:[],codeRevision:config?.codeRevision,title:draft.title,path:target,description:input.description,published:input.published,createdAt:new Date().toISOString()};
       fs.mkdirSync(path.join(root,job.id),{mode:0o700});save(job);
       launch(job,async()=>{
-        async function step(stage,task){
-          const started=Date.now();job.phase={stage,startedAt:new Date(started).toISOString()};save(job);
-          let status='failed';
-          try{const result=await task();status='complete';return result;}
-          finally{job.timings.push({stage,durationMs:Date.now()-started,status});save(job);}
-        }
-        job.base=await step('source',()=>driver.head());save(job);
-        const workspace=await step('workspace',()=>driver.prepare(path.join(root,job.id),job.base));
-        await step('content',async()=>{
+        const measure=(stage,task)=>step(job,stage,task);
+        job.base=await measure('source',()=>driver.head());save(job);
+        const workspace=await measure('workspace',()=>driver.prepare(path.join(root,job.id),job.base));
+        await measure('content',async()=>{
           const posts=path.join(workspace,'src/content/posts'),file=path.join(posts,target);
           if(!fs.realpathSync(posts).startsWith(fs.realpathSync(workspace)+path.sep))throw new StoreError(422,'文章目录不能指向构建目录外。');
           if(fs.existsSync(file)&&!fs.realpathSync(file).startsWith(fs.realpathSync(posts)+path.sep))throw new StoreError(422,'文章来源路径越界。');
@@ -74,10 +75,10 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
         // Only an identical article, assets, code and source commit may reuse a
         // complete output. Check HEAD above even for a cache hit; confirm checks
         // it again before any commit. Each job owns its own immutable copy.
-        const cached=history.find(j=>j.built&&j.buildVersion===job.buildVersion&&j.state==='ready'&&j.base===job.base&&j.codeRevision===job.codeRevision&&j.revision===job.revision&&j.path===job.path&&j.articleHash===job.articleHash&&fs.existsSync(path.join(root,j.id,'work/dist',job.url,'index.html')));
+        const cached=history.find(j=>j.built&&j.buildVersion===job.buildVersion&&j.state==='ready'&&j.base===job.base&&j.codeRevision===job.codeRevision&&j.revision===job.revision&&j.path===job.path&&j.articleHash===job.articleHash&&fs.existsSync(path.join(root,j.id,'work',outputDir(j),job.url,'index.html')));
         if(cached){
-          await step('reuse',async()=>fs.cpSync(path.join(root,cached.id,'work/dist'),path.join(workspace,'dist'),{recursive:true}));job.reused=true;
-        }else await step('build',()=>driver.build(workspace,job.url,step));
+          await measure('reuse',async()=>fs.cpSync(path.join(root,cached.id,'work',outputDir(cached)),path.join(workspace,outputDir(job)),{recursive:true}));job.reused=true;
+        }else await measure('render',()=>driver.preview(workspace,job.url,measure,job.files));
         unchanged(job);job.built=true;job.state='ready';job.phase=null;job.finishedAt=new Date().toISOString();save(job);
       });
       return view(job);
@@ -90,12 +91,20 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
       if(!['ready','retry'].includes(job.state)||input.revision!==job.revision||input.confirm!==true)throw new StoreError(409,'请先完成检查与预览，再明确确认发布。');
       if(list().some(j=>j.state==='retry'&&j.id!==id))throw new StoreError(409,'请先处理上一次未完成的发布。');
       if(job.state==='ready')unchanged(job);
-      job.state='publishing';job.error='';save(job);
+      job.state='publishing';job.error='';job.finishedAt=null;save(job);
       launch(job,async()=>{
         const workspace=path.join(root,id,'work');
         if(!job.commit){
           if(await driver.head()!==job.base)throw new StoreError(409,'远端分支已更新，请重新生成预览。');
-          unchanged(job);job.commit=await driver.commit(workspace,job.base,job.files,id);save(job);
+          unchanged(job);
+          // Preview output is never deployable. Build the full site only after consent.
+          if(job.previewOnly&&!job.publishBuilt){
+            await step(job,'build',()=>driver.build(workspace,job.url,(stage,task)=>step(job,stage,task)));
+            job.publishBuilt=true;save(job);
+            unchanged(job);
+            if(await driver.head()!==job.base)throw new StoreError(409,'构建期间远端分支已更新，请重新生成预览。');
+          }
+          job.commit=await driver.commit(workspace,job.base,job.files,id);save(job);
         }
         if(!await driver.contains(job.commit)){
           if(await driver.head()!==job.base){
@@ -107,13 +116,13 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
         job.pushed=true;save(job);
         if(!await driver.contains(job.commit))throw new StoreError(409,'发布分支已有新提交，已停止旧版本上线，请联系部署方核对。');
         job.deployment=await driver.deploy(path.join(workspace,'dist'),id);
-        job.state='published';job.error='';save(job);usePublishedSource(job);
+        job.state='published';job.error='';job.phase=null;job.finishedAt=new Date().toISOString();save(job);usePublishedSource(job);
       });
       return view(job);
     },
     preview(id,relative){
       const job=read(id);if(!job.built)throw new StoreError(409,'预览尚未构建完成。');
-      const dist=fs.realpathSync(path.join(root,id,'work/dist'));
+      const dist=fs.realpathSync(path.join(root,id,'work',outputDir(job)));
       let file;try{file=fs.realpathSync(path.join(dist,relative)+(relative.endsWith('/')?'index.html':''));}catch{throw new StoreError(404,'预览资源不存在');}
       if(!file.startsWith(dist+path.sep)||!fs.statSync(file).isFile()||!mime[path.extname(file)])throw new StoreError(404,'预览资源不存在');
       let bytes=fs.readFileSync(file);

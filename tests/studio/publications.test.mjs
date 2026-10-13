@@ -16,6 +16,7 @@ async function settled(manager,id){for(let i=0;i<500;i++){const job=manager.get(
 function mockDriver(root){let head='base',pushes=0,deploys=0,failDeploy=false;return {
  async head(){return head;},async prepare(dir){const work=path.join(dir,'work');fs.mkdirSync(path.join(work,'src/content/posts'),{recursive:true});return work;},
  async build(work,url){const dir=path.join(work,'dist',url);fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,'index.html'),'<html><script>SECRET_SCRIPT</script><a href="/studio/">link</a><img src="/_astro/image.png" onerror="alert(1)"><p>article</p></html>');fs.mkdirSync(path.join(work,'dist/_astro'));fs.writeFileSync(path.join(work,'dist/_astro/image.png'),png);},
+ async preview(work,url,step){await this.build(work,url,step);fs.renameSync(path.join(work,'dist'),path.join(work,'preview'));},
  async commit(){return 'new-commit';},async push(){head='new-commit';pushes++;},async contains(commit){return head===commit;},async deploy(){if(failDeploy)throw Error('simulated deploy failure');deploys++;return {target:'test'};},
  counts(){return {pushes,deploys};},changeHead(){head='other';},failDeploy(value){failDeploy=value;}
 };}
@@ -94,4 +95,38 @@ test('真实隔离 Git 提交仅包含选中文章，正常推送与原子上线
  const driver=gitPublisher({repoDir:repo,enabled:true,branch:'feat/test',releaseDir:releases,liveLink:live});const base=await driver.head(),jobDir=path.join(root,'job');fs.mkdirSync(jobDir);const work=await driver.prepare(jobDir,base);fs.mkdirSync(path.join(work,'src/content/posts'),{recursive:true});fs.writeFileSync(path.join(work,'src/content/posts/test.md'),'article');fs.writeFileSync(path.join(work,'unselected.txt'),'PRIVATE');
  const commit=await driver.commit(work,base,['src/content/posts/test.md'],'test');await driver.push(commit,base);assert.equal(await driver.contains(commit),true);assert.equal(git(['status','--porcelain']),'');assert.equal(git(['diff','--name-only',base,commit]),'src/content/posts/test.md');
  const dist=path.join(work,'dist');fs.mkdirSync(path.join(dist,'_astro'),{recursive:true});fs.writeFileSync(path.join(dist,'index.html'),'new');await driver.deploy(dist,'release-test');assert.equal(fs.readFileSync(path.join(live,'index.html'),'utf8'),'new');assert.equal(fs.readFileSync(path.join(live,'_astro/old.css'),'utf8'),'old');assert.equal(fs.existsSync(path.join(live,'unselected.txt')),false);
+});
+
+test('单篇预览及修改后预览不运行全站编译，确认发布才编译',async t=>{
+ const {root,store,draft}=fixture(t),driver=mockDriver(root);
+ let fullBuilds=0,previews=0;const render=driver.build;
+ driver.preview=async(...args)=>{previews++;await render(...args);fs.renameSync(path.join(args[0],'dist'),path.join(args[0],'preview'));};
+ driver.build=async(...args)=>{fullBuilds++;await render(...args);};
+ const manager=openPublications({dataDir:path.join(root,'data'),store,config:{enabled:true},adapter:driver});
+ let job=await settled(manager,manager.prepare(draft.id,{...input,revision:1}).id);
+ assert.equal(job.state,'ready');assert.equal(fullBuilds,0,'预览不能启动 Astro/Vite 全站编译');assert.equal(previews,1);
+ store.update(draft.id,{...draft,body:'修改后仍应快速预览',revision:1});
+ job=await settled(manager,manager.prepare(draft.id,{...input,revision:2}).id);
+ assert.equal(job.state,'ready');assert.equal(fullBuilds,0);assert.equal(previews,2);
+ manager.confirm(job.id,{revision:2,confirm:true});
+ assert.equal((await settled(manager,job.id)).state,'published');assert.equal(fullBuilds,1);
+ assert.deepEqual(driver.counts(),{pushes:1,deploys:1});
+});
+
+test('确认后的完整构建失败、草稿变化或远端变化均不得提交或上线',async t=>{
+ for(const scenario of ['failure','draft','remote'])await t.test(scenario,async t=>{
+  const {root,store,draft}=fixture(t),driver=mockDriver(root);
+  const manager=openPublications({dataDir:path.join(root,'data'),store,config:{enabled:true},adapter:driver});
+  const job=await settled(manager,manager.prepare(draft.id,{...input,revision:1}).id);
+  const build=driver.build;
+  driver.build=async(...args)=>{
+   if(scenario==='failure')throw Error('build failed');
+   await build(...args);
+   if(scenario==='draft')store.update(draft.id,{...draft,body:'构建期间的修改',revision:1});
+   if(scenario==='remote')driver.changeHead();
+  };
+  manager.confirm(job.id,{revision:1,confirm:true});const failed=await settled(manager,job.id);
+  assert.equal(failed.state,'failed');assert.deepEqual(driver.counts(),{pushes:0,deploys:0});
+  assert.ok(manager.preview(job.id,'posts/writing/test/').bytes.toString().includes('article'));
+ });
 });

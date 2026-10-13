@@ -47,3 +47,6 @@ package/
 studio-dist/
 .env.studio
 .env.studio.*
+
+# Private compiled article renderer (deploy separately, never under public dist)
+.studio-preview/

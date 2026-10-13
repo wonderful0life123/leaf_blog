@@ -152,14 +152,15 @@ test('发布设置、任务与私密预览均需登录，提交需要同源请�
  assert.equal((await f.request(info,{headers})).data.enabled,false);
  assert.equal((await f.request(info,{method:'POST',headers,body:{revision:1}})).status,503);
 });
-test('私密构建预览 HTML 与 CSS 受保护、禁止缓存、禁止脚本并正确改写字体地址',async t=>{
- const f=await setup(t),id=randomUUID(),dir=path.join(f.config.dataDir,'publications',id);
- fs.mkdirSync(path.join(dir,'work/dist/posts/test'),{recursive:true});fs.mkdirSync(path.join(dir,'work/dist/_astro'));
- fs.writeFileSync(path.join(dir,'job.json'),JSON.stringify({id,state:'ready',built:true,url:'/posts/test/',createdAt:new Date().toISOString()}));
- fs.writeFileSync(path.join(dir,'work/dist/posts/test/index.html'),'<html><script>private()</script><link rel="stylesheet" href="/_astro/font.css"><p>PRIVATE_RENDER</p></html>');
- fs.writeFileSync(path.join(dir,'work/dist/_astro/font.css'),'@font-face{src:url(/_astro/font.woff2)}');
+for(const previewOnly of [false,true])test(`${previewOnly?'单篇':'旧版构建'}预览 HTML 与 CSS 受保护、禁止缓存、禁止脚本并正确改写字体地址`,async t=>{
+ const f=await setup(t),id=randomUUID(),dir=path.join(f.config.dataDir,'publications',id),output=previewOnly?'work/preview':'work/dist';
+ fs.mkdirSync(path.join(dir,output+'/posts/test'),{recursive:true});fs.mkdirSync(path.join(dir,output+'/_astro'));
+ fs.writeFileSync(path.join(dir,'job.json'),JSON.stringify({id,state:'ready',built:true,previewOnly,url:'/posts/test/',createdAt:new Date().toISOString()}));
+ fs.writeFileSync(path.join(dir,output+'/posts/test/index.html'),'<html><script>private()</script><link rel="stylesheet" href="/_astro/font.css"><p>PRIVATE_RENDER</p></html>');
+ fs.writeFileSync(path.join(dir,output+'/_astro/font.css'),'@font-face{src:url(/_astro/font.woff2)}');
  const url=`/studio-api/publications/${id}/preview`,cookie=await f.login();
  assert.equal((await f.request(url+'/posts/test/')).status,401);assert.equal((await f.request(url+'/_astro/font.css')).status,401);
  const html=await f.request(url+'/posts/test/',{headers:{Cookie:cookie}});assert.equal(html.status,200);assert.match(html.headers['content-security-policy'],/default-src 'none'/);assert.match(html.headers['cache-control'],/private, no-store/);assert.equal(html.headers['x-frame-options'],'SAMEORIGIN');assert.ok(!html.text.includes('<script'));assert.ok(html.text.includes('PRIVATE_RENDER'));
  const css=await f.request(url+'/_astro/font.css',{headers:{Cookie:cookie}});assert.equal(css.status,200);assert.ok(css.text.includes(url+'/_astro/font.woff2'));assert.equal((await f.request(url+'/%2e%2e%2fjob.json',{headers:{Cookie:cookie}})).status,404);
+ for(const resource of ['/posts/test/','/_astro/font.css'])assert.equal((await f.request(url+resource)).status,401,'已登录读取后匿名仍不可访问');
 });

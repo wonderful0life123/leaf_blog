@@ -21,7 +21,7 @@
   let bodyEditor, publishing = false, timer, toastTimer;
   let publishInfo=null, publication=null, publishError='',publishConsent=false,publishTimer;
   let publishPath='',publishDescription='',publishDate='';
-  const publicationStages={source:'核对博客版本',workspace:'准备预览环境',content:'检查正文与图片',build:'构建博客',icons:'准备图标',site:'生成博客页面与图片',search:'生成搜索索引',reuse:'读取已有预览'};
+  const publicationStages={source:'核对博客版本',workspace:'准备预览环境',content:'检查正文与图片',render:'渲染当前文章',build:'构建发布版本',icons:'准备图标',site:'生成博客页面与图片',search:'生成搜索索引',reuse:'读取已有预览'};
   const duration=ms=>ms<1000?'不到 1 秒':ms<60000?`${Math.round(ms/1000)} 秒`:`${Math.floor(ms/60000)} 分 ${Math.floor(ms%60000/1000)} 秒`;
   let dirty = false, saving = false, saveError = '', conflict = false, editVersion = 0, saveTask = null;
   let recoveryWarning = '', loadError = '';
@@ -190,11 +190,11 @@
     const page=document.documentElement,preview=doc.documentElement;
     preview.style.setProperty('--hue',getComputedStyle(page).getPropertyValue('--hue'));
     preview.classList.toggle('dark',page.classList.contains('dark'));
-    preview.setAttribute('data-theme',page.getAttribute('data-theme')||'light');
+    preview.setAttribute('data-theme',(page.classList.contains('dark')?preview.dataset.darkTheme:preview.dataset.lightTheme)||page.getAttribute('data-theme')||'light');
     const heading=doc.querySelector('main h1');
-    if(heading){heading.style.scrollMarginTop='6rem';heading.scrollIntoView({block:'start'});}
+    if(heading&&!preview.dataset.lightTheme){heading.style.scrollMarginTop='6rem';heading.scrollIntoView({block:'start'});}
   }
-  function pollPublication(delay=1500){
+  function pollPublication(delay=publication?.state==='publishing'?1500:400){
     clearTimeout(publishTimer);
     if(!publication||!['building','publishing'].includes(publication.state)||dialog!=='publish')return;
     const id=publication.id;
@@ -337,7 +337,7 @@
       {#if !publishInfo}<p class="modal-copy">{publishing?'正在读取发布设置…':'发布设置尚未加载。'}</p>
       {:else if !publishInfo.available}<p class="modal-copy">草稿已保存。服务器尚未配置发布服务，配置后即可在这里生成预览并发布。</p>
       {:else}
-        <p class="modal-copy">先检查这篇文章的格式和图片，构建成功后查看博客实际排版，再确认发布。</p>
+        <p class="modal-copy">先查看当前文章的排版、代码和图片。确认发布后才构建完整博客，构建成功后上线。</p>
         <div class="publication-fields">
           <label>文章路径<input aria-label="发布文章路径" bind:value={publishPath} disabled={publishing||['building','publishing','retry'].includes(publication?.state)||current.source?.root==='blog'||!!current.publication} on:input={resetPublication} placeholder="writing/my-first-post.md"/><small>目录与分类分别管理；发布后保持网址不变。</small></label>
           <label>发布日期<input type="date" aria-label="发布日期" bind:value={publishDate} disabled={publishing||['building','publishing','retry'].includes(publication?.state)} on:input={resetPublication}/></label>
@@ -350,14 +350,14 @@
               <span class="publication-elapsed">已等待 {duration(publication.elapsedMs||0)}</span>
               <p class="publication-progress-copy">可以点“返回写作”继续编辑，任务会在后台运行；再次打开可查看进度。</p>
               {#if publication.elapsedMs>=60000}<p class="publication-progress-copy">本次等待较久，请勿重复生成。下方耗时记录可帮助定位慢在哪一步。</p>{/if}
-            {:else if publication.state==='publishing'}正在提交 GitHub 并更新博客，请勿重复操作。
-            {:else if publication.state==='ready'}✓ 构建检查通过 · 第 {publication.revision} 版 · {publication.imageCount} 张本地图片{#if publication.elapsedMs!=null} · {publication.reused?'已复用预览，':''}用时 {duration(publication.elapsedMs)}{/if}
+            {:else if publication.state==='ready'}✓ {publication.previewOnly?'文章预览已就绪':'构建检查通过'} · 第 {publication.revision} 版 · {publication.imageCount} 张本地图片{#if publication.elapsedMs!=null} · {publication.reused?'已复用预览，':''}用时 {duration(publication.elapsedMs)}{/if}
+            {:else if publication.state==='publishing'}<strong>{publicationStages[publication.phase?.stage]||'正在提交并上线'}…</strong><p>完整构建可能需要几分钟；成功前原网站保持可用。</p>
             {:else if publication.state==='published'}✓ 已发布到博客 · 提交 {publication.commit.slice(0,8)}
             {:else}{publication.error}{/if}
           </div>
           {#if publication.timings?.length}<details class="publication-timings"><summary>查看各阶段耗时</summary><ul>{#each publication.timings as timing}<li><span>{timing.stage==='build'?'构建合计':publicationStages[timing.stage]||timing.stage}{timing.status==='failed'?'（未完成）':''}</span><span>{duration(timing.durationMs)}</span></li>{/each}</ul></details>{/if}
           {#each publication.warnings as warning}<p class="publication-warning">{warning}</p>{/each}
-          {#if publication.previewUrl}<p class="preview-caption">博客排版预览 · 链接、播放器等交互功能在发布后可用</p><iframe class="publication-preview" title="博客文章构建预览" src={publication.previewUrl} on:load={stylePublicationPreview} sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>{/if}
+          {#if publication.previewUrl}<p class="preview-caption">文章排版预览 · 使用博客 Markdown 样式；全站布局与交互在发布后可用</p><iframe class="publication-preview" title="博客文章排版预览" src={publication.previewUrl} on:load={stylePublicationPreview} sandbox="allow-same-origin" referrerpolicy="no-referrer"></iframe>{/if}
           {#if publication.state==='published'}<p class="modal-copy"><a class="published-link" href={publication.url} target="_blank" rel="noopener noreferrer" data-no-swup>查看已发布文章 ↗</a> · 草稿副本继续保留，可修改后再次发布。</p>{/if}
         {/if}
         {#if !publishInfo.enabled}<p class="modal-copy">当前为私密预览模式，不会提交 GitHub 或更新线上博客。</p>{/if}

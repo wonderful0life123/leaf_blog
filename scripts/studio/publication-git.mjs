@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
+import {articlePreview} from './publication-preview.mjs';
 import {StoreError} from './store.mjs';
 const execute=promisify(execFile);
 const fail=message=>{throw new StoreError(503,message);};
@@ -34,6 +35,7 @@ export function gitPublisher(config) {
   }
   return {
     head,
+    preview:articlePreview(repo),
     async prepare(dir,base){
       const workspace=path.join(dir,'work');fs.mkdirSync(workspace,{recursive:true,mode:0o700});
       await run('git',['archive','--format=tar','-o',path.join(dir,'source.tar'),base]);
