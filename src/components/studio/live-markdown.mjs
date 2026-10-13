@@ -3,6 +3,7 @@ import {Decoration, EditorView, WidgetType} from '@codemirror/view';
 import {markdownLanguage} from '@codemirror/lang-markdown';
 import {marked} from 'marked';
 import katex from 'katex';
+import {readTable} from './table-edit.mjs';
 import {codeSegments} from './code-preview.mjs';
 
 const composing = StateEffect.define();
@@ -30,8 +31,18 @@ export function livePlan(text) {
       return false;
     }
     if(name==='Table'){
-      const rows=[];for(let row=n.firstChild;row;row=row.nextSibling){if(!['TableHeader','TableRow'].includes(row.name))continue;const cells=[];for(let c=row.firstChild;c;c=c.nextSibling)if(c.name==='TableCell')cells.push(text.slice(c.from,c.to));rows.push(cells);}
-      add('table',n.from,n.to,{rows});excluded.push([n.from,n.to]);return false;
+      let table,editable=n.parent.name==='Document';
+      try{table=readTable(raw);}catch{
+        editable=false;
+        const rows=[];
+        for(let row=n.firstChild;row;row=row.nextSibling){
+          if(!['TableHeader','TableRow'].includes(row.name))continue;
+          const cells=[];for(let c=row.firstChild;c;c=c.nextSibling)if(c.name==='TableCell')cells.push(text.slice(c.from,c.to));
+          rows.push(cells);
+        }
+        table={rows,align:Array(rows[0]?.length||0).fill(null)};
+      }
+      add('table',n.from,n.to,{...table,editable});excluded.push([n.from,n.to]);return false;
     }
     if(/^ATXHeading|^SetextHeading/.test(name))add('heading',n.from,n.to,{level:Number(name.slice(-1))});
     if(name==='HeaderMark'){
@@ -54,7 +65,7 @@ export function livePlan(text) {
     if(name==='Image'){
       excluded.push([n.from,n.to]);
       const token=marked.lexer(raw)[0]?.tokens?.find(t=>t.type==='image');
-      if(token)add('image',n.from,n.to,{src:token.href,alt:token.text});
+      if(token)add('image',n.from,n.to,{src:token.href,alt:token.text,title:token.title||''});
       return false;
     }
   }});
@@ -74,14 +85,14 @@ function active(state,from,to){
   return state.selection.ranges.some(r=>r.from<=last&&r.to>=first);
 }
 class Rendered extends WidgetType {
-  constructor(item,source){super();this.item=item;this.source=source;}
+  constructor(item,source,onImage,onTable){super();this.item=item;this.source=source;this.onImage=onImage;this.onTable=onTable;}
   eq(other){return JSON.stringify(this.item)===JSON.stringify(other.item)&&this.source===other.source;}
   toDOM(view){
     const i=this.item,dom=document.createElement('span');dom.className='cm-live-widget cm-live-'+(i.kind==='codeblock'?'code-preview':i.kind);dom.contentEditable='false';
     const edit=()=>{view.dispatch({selection:{anchor:Math.min(i.kind==='codeblock'?i.codeFrom:i.from+1,view.state.doc.length)}});view.focus();};
-    dom.setAttribute('role','button');dom.tabIndex=0;dom.setAttribute('aria-label',({codeblock:'编辑代码块（'+i.language+'）',image:'编辑图片：'+(i.alt||'图片'),math:'编辑公式',table:'编辑表格源码',task:'切换待办状态',bullet:'编辑列表'})[i.kind]);
+    dom.setAttribute('role','button');dom.tabIndex=0;dom.setAttribute('aria-label',({codeblock:'编辑代码块（'+i.language+'）',image:'编辑图片：'+(i.alt||'图片'),math:'编辑公式',table:i.editable&&this.onTable?'编辑表格':'编辑表格源码',task:'切换待办状态',bullet:'编辑列表'})[i.kind]);
     dom.addEventListener('mousedown',e=>e.preventDefault());
-    const activate=()=>{if(i.kind==='task'&&!view.state.readOnly){view.dispatch({changes:{from:i.from,to:i.to,insert:i.checked?'[ ]':'[x]'},userEvent:'input'});view.focus();}else edit();};
+    const activate=()=>{if(i.kind==='table'&&i.editable&&this.onTable){this.onTable(i);return;}if(i.kind==='image'&&this.onImage){this.onImage(i);return;}if(i.kind==='task'&&!view.state.readOnly){view.dispatch({changes:{from:i.from,to:i.to,insert:i.checked?'[ ]':'[x]'},userEvent:'input'});view.focus();}else edit();};
     dom.addEventListener('click',activate);dom.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();activate();}});
     if(i.kind==='codeblock'){
       const header=document.createElement('span');header.className='cm-live-code-header';
@@ -95,13 +106,13 @@ class Rendered extends WidgetType {
     }else if(i.kind==='math'){
       dom.innerHTML=katex.renderToString(i.formula,{displayMode:i.display,throwOnError:false,trust:false,strict:'ignore',maxExpand:1000});
     }else if(i.kind==='table'){
-      const table=document.createElement('table');i.rows.forEach((row,index)=>{const tr=document.createElement('tr');row.forEach(cell=>{const td=document.createElement(index?'td':'th');td.textContent=cell;tr.append(td);});table.append(tr);});dom.append(table);
+      const table=document.createElement('table');i.rows.forEach((row,index)=>{const tr=document.createElement('tr');row.forEach((cell,column)=>{const td=document.createElement(index?'td':'th');td.textContent=cell;td.style.textAlign=i.align?.[column]||'left';tr.append(td);});table.append(tr);});dom.append(table);
     }else dom.textContent=i.kind==='task'?(i.checked?'☑':'☐'):'•';
     return dom;
   }
   ignoreEvent(){return true;}
 }
-function decorations(state,items,resolveImage){
+function decorations(state,items,resolveImage,onImage,onTable){
   const ranges=[];
   const replacements=items.filter(i=>(['image','math','table'].includes(i.kind)||(i.kind==='codeblock'&&i.complete))&&!active(state,i.from,i.to));
   for(const i of items){
@@ -116,22 +127,22 @@ function decorations(state,items,resolveImage){
         const src=i.kind==='image'?safeLiveImage(resolveImage(i.src)):'';
         if(i.kind==='image'&&!src)continue;
         const block=['table','codeblock'].includes(i.kind)||((i.kind==='image'||i.kind==='math')&&state.doc.lineAt(i.from).from===i.from&&state.doc.lineAt(i.to).to===i.to);
-        ranges.push(Decoration.replace({widget:new Rendered(i,src),block}).range(i.from,i.to));
+        ranges.push(Decoration.replace({widget:new Rendered(i,src,onImage,onTable),block}).range(i.from,i.to));
       }
     }
   }
   return Decoration.set(ranges,true);
 }
-export function liveMarkdown({resolveImage=href=>href}={}){
+export function liveMarkdown({resolveImage=href=>href,onImage,onTable}={}){
   const field=StateField.define({
-    create(state){const items=livePlan(state.doc.toString());return {items,composing:false,decorations:decorations(state,items,resolveImage)};},
+    create(state){const items=livePlan(state.doc.toString());return {items,composing:false,decorations:decorations(state,items,resolveImage,onImage,onTable)};},
     update(value,tr){
       let inComposition=value.composing;for(const effect of tr.effects)if(effect.is(composing))inComposition=effect.value;
       if(inComposition)return {...value,composing:true,decorations:value.decorations.map(tr.changes)};
       const ended=value.composing&&!inComposition;
       if(!tr.docChanged&&!tr.selection&&!ended)return value;
       const items=tr.docChanged||ended?livePlan(tr.state.doc.toString()):value.items;
-      return {items,composing:false,decorations:decorations(tr.state,items,resolveImage)};
+      return {items,composing:false,decorations:decorations(tr.state,items,resolveImage,onImage,onTable)};
     },
     provide:f=>EditorView.decorations.from(f,value=>value.decorations)
   });

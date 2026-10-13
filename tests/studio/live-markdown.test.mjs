@@ -67,3 +67,10 @@ test('代码高亮不改变缩进、换行或 HTML 字面量，未知语言保�
   const segments=await codeSegments(code,language);assert.equal(segments.map(x=>x.text).join(''),code);if(language==='python')assert.ok(segments.some(x=>x.classes.includes('tok-keyword')));
  }
 });
+
+test('引用和列表中的表格继续使用源码编辑，不因解析差异阻断整篇文章',()=>{
+ for(const source of ['> | A | B |\n> | --- | --- |\n> | x | y |','- item\n\n  | A | B |\n  | --- | --- |\n  | x | y |']){
+  const table=livePlan(source).find(i=>i.kind==='table');assert.ok(table);assert.equal(table.editable,false);assert.deepEqual(table.rows,[['A','B'],['x','y']]);
+ }
+ const table=livePlan('| A | B |\n| :--- | ---: |\n| x | y |').find(i=>i.kind==='table');assert.equal(table.editable,true);assert.deepEqual(table.align,['left','right']);
+});

@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import WritingEditor from './WritingEditor.svelte';
+  import Icon from '../common/Icon.svelte';
   import StudioMenu from './StudioMenu.svelte';
   import {editorPortal} from './editor-portal.mjs';
   import {selectArticles,excerpt,displayDate} from './draft-list.mjs';
@@ -155,7 +156,6 @@
   }
   function changed() {dirty=true;editVersion++;saved='有修改，等待保存…';queueMicrotask(backupLocal);clearTimeout(timer);if(!conflict)timer=setTimeout(persist,600);}
   async function home() {if(busy)return;if(uploading){toast('图片正在保存，请稍候。');return;}if(await persist()){screen='home';current=null;address(null);}}
-  async function insert(text) {if(!current||busy)return;await bodyEditor?.insertText(text);}
   function category(p) {return p==='.'?'':p.replace(/^AI Infra/,'AI infra').replace(/\/tilelang-puzzles$/,'/TileLang Puzzles');}
   async function importNote() {
     if(!selected||busy||uploading)return;
@@ -211,16 +211,10 @@
     try{publication=(await request('/publications/'+publication.id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:publication.revision,confirm:true})})).publication;pollPublication();}
     catch(e){publishError=e.message;}finally{publishing=false;}
   }
-  async function uploadFiles(files) {
-    if(!current||uploading||busy)return;uploading=true;
-    try {
-      for(const file of files){
-        if(file.size>10*1024*1024)throw new Error('每张图片最多 10 MB');
-        const result=await request('/media',{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
-        await insert(`![${file.name.replace(/[\[\]]/g,'')}](${result.url})`);
-      }
-      if(await persist())toast('图片与正文已保存到'+storageLabel+'。');
-    }catch(e){toast(e.message);}finally{uploading=false;}
+  async function uploadImage(file) {
+    if(!current||busy)throw new Error('当前文章暂时无法上传图片');
+    const result=await request('/media',{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
+    return result.url;
   }
   async function reauthenticate(){try{account=(await request('/session')).user;authNeeded=false;await persist();}catch(e){toast('请先在新窗口完成 GitHub 登录，再重试。');}}
   async function logout(){if(uploading||busy||!(await persist()))return;try{await request('/logout',{method:'POST'});for(const key of Object.keys(sessionStorage))if(key.startsWith('wonder-draft-recovery:'))sessionStorage.removeItem(key);current=null;drafts=[];notes=[];articles=[];account=null;dialog='';location.assign('/studio/');}catch(e){toast(e.message);}}
@@ -313,14 +307,14 @@
       </section>
     {:else if current}
       <section class="editor card-base" class:focused use:editorPortal={focused}>
-        <div class="editor-top"><button class="quiet" on:click={home}>← 文章列表</button><span class="save-status" role="status"><i></i>{uploading?'正在保存图片…':saved}</span><div class="editor-actions"><button aria-pressed={settingsOpen} on:click={()=>settingsOpen=!settingsOpen}>文章设置</button><button aria-pressed={focused} on:click={()=>focused=!focused}>{focused?'退出专注':'专注写作'}</button><button on:click={exportFile}>导出 Markdown</button><button disabled={busy||saving||uploading||!dirty||conflict} on:click={persist}>{saving?'保存中…':'立即保存'}</button><button on:click={publish}>预览与发布 ↗</button></div></div>
+        <div class="editor-top"><button class="quiet back-list" on:click={home}><Icon icon="material-symbols:arrow-back-rounded"/>文章列表</button><span class="save-status" role="status"><i></i>{uploading?'正在保存图片…':saved}</span><div class="editor-actions"><button aria-pressed={settingsOpen} on:click={()=>settingsOpen=!settingsOpen}><Icon icon="material-symbols:tune-rounded"/><span>文章设置</span></button><StudioMenu label="写作选项" options={[{value:'focus',label:focused?'退出专注':'专注写作'},{value:'export',label:'导出 Markdown'},{value:'save',label:saving?'保存中…':'立即保存',disabled:busy||saving||uploading||!dirty||!!conflict}]} onSelect={action=>{if(action==='focus')focused=!focused;else if(action==='export')exportFile();else if(!busy&&!saving&&!uploading&&dirty&&!conflict)persist();}}/><button class="primary publish-entry" on:click={publish}><Icon icon="material-symbols:visibility-outline-rounded"/>预览与发布</button></div></div>
         {#if saveError}<div class="save-error" role="alert"><span>{saveError}</span>{#if authNeeded}<a data-auth-link data-no-swup href="/studio-auth/login/" target="_blank" rel="noopener noreferrer">在新窗口重新登录</a><button on:click={reauthenticate}>登录后重试保存</button>{:else if conflict}<button disabled={busy} on:click={saveCopy}>将我的修改另存为草稿</button>{:else}<button on:click={persist}>重试保存</button>{/if}<button on:click={exportFile}>导出当前正文</button></div>{/if}
         {#if authNeeded&&!saveError}<div class="save-error" role="alert">登录已失效，当前文字仍保留。<a data-auth-link data-no-swup href="/studio-auth/login/" target="_blank" rel="noopener noreferrer">在新窗口重新登录</a><button on:click={reauthenticate}>登录后继续</button></div>{/if}
         {#if recoveryWarning}<p class="save-error">{recoveryWarning}</p>{/if}
         <div class="editor-heading"><div class="eyebrow">{current.noteId?'从笔记开始':'把想法写下来'} <span class="small-status">{status(current)}</span></div><input class="title-input" disabled={busy} aria-label="文章标题" placeholder="给这篇文章起个标题…" bind:value={current.title} on:input={changed}/>{#if current.noteId}<p class="source-line">⌘ {current.noteId} · {storageLabel}副本，不改动原笔记</p>{/if}</div>
         <div class="editor-layout" class:with-settings={settingsOpen}>
           <div class="writing-area">
-            {#key current.id}<WritingEditor bind:this={bodyEditor} value={current.body} {preview} resolveImage={href=>imageSource(href,current)} disabled={busy} {uploading} onChange={text=>{current.body=text;changed();}} onImages={uploadFiles}/>{/key}
+            {#key current.id}<WritingEditor bind:this={bodyEditor} value={current.body} {preview} resolveImage={href=>imageSource(href,current)} disabled={busy} {uploading} onChange={text=>{current.body=text;changed();}} onUpload={uploadImage} onUploadState={active=>uploading=active}/>{/key}
           </div>{#if settingsOpen}<aside class="properties"><h3>文章设置</h3><label>分类<input disabled={busy} placeholder="例如 AI infra/cuda" bind:value={current.category} on:input={changed}/></label><p>用 / 分隔层级，分类不会改变文章网址。</p><label>标签<input disabled={busy} placeholder="CUDA, GPU, 学习笔记" bind:value={current.tags} on:input={changed}/></label><div class="property-divider"></div><h4>保存与发布</h4><p>修改会自动保存到{storageLabel}，等待显示“已保存到{storageLabel}”后再离开。</p><div class="private-note">◈ 草稿与博客仓库分开保存<br/><span>自动保存保持私密，确认发布后才公开。</span></div><button class="wide" on:click={showImport}>⌘ 浏览我的笔记</button></aside>{/if}</div>
       </section>
     {/if}
@@ -555,4 +549,7 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
  .focused .editor-layout.with-settings { grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; }
  .focused .properties { max-height:25vh; }
 }
+
+.editor-top .back-list,.editor-actions>button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px}.editor-actions{align-items:center}.editor-actions>button:not(.primary){background:transparent;color:var(--content-meta);border-color:transparent}.editor-actions>button[aria-pressed=true],.editor-actions>button:not(.primary):hover{background:var(--btn-regular-bg);color:var(--btn-content)}.editor-actions .publish-entry{font-weight:600;padding-inline:16px}.save-status{margin-right:auto}
+@media(max-width:700px){.editor-actions{justify-content:flex-end!important}.editor-actions .publish-entry{margin-left:auto}.focused .editor-actions>button{min-height:36px;font-size:12px}.editor-top .back-list{padding:4px 6px;font-size:12px}}
 </style>
