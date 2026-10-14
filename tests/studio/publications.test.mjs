@@ -130,3 +130,12 @@ test('确认后的完整构建失败、草稿变化或远端变化均不得提�
   assert.ok(manager.preview(job.id,'posts/writing/test/').bytes.toString().includes('article'));
  });
 });
+
+test('切换发布模式后旧预览必须重新生成，不能提交到另一种上线目录',async t=>{
+ const {root,store,draft}=fixture(t),driver=mockDriver(root),config={enabled:true,mode:'static'};
+ const manager=openPublications({dataDir:path.join(root,'data'),store,config,adapter:driver});
+ const job=await settled(manager,manager.prepare(draft.id,{...input,revision:1}).id);
+ assert.equal(job.state,'ready');config.mode='runtime';
+ assert.throws(()=>manager.confirm(job.id,{revision:1,confirm:true}),/发布模式已切换/);
+ assert.deepEqual(driver.counts(),{pushes:0,deploys:0});
+});

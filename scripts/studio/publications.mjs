@@ -6,13 +6,18 @@ import {parse} from 'node-html-parser';
 import {StoreError} from './store.mjs';
 import {publicationContent,articlePath} from './publication-content.mjs';
 import {gitPublisher} from './publication-git.mjs';
+import {runtimePublisher,validateRuntimePaths} from '../runtime/release.mjs';
 const uuid=/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/;
 const mime={'.html':'text/html; charset=utf-8','.css':'text/css','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.avif':'image/avif','.gif':'image/gif','.svg':'image/svg+xml','.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf'};
 export function publicationConfig(env=process.env){
   if(!env.WONDER_PUBLISH_REPO_DIR)return null;
   const enabled=env.WONDER_PUBLISH_ENABLED==='1',branch=env.WONDER_PUBLISH_BRANCH||'';
   if(enabled&&(!/^feat\/[a-z0-9-]+$/.test(branch)||!env.WONDER_PUBLISH_RELEASE_DIR||!env.WONDER_PUBLISH_LIVE_LINK||! /^[a-f0-9]{40}$/.test(env.WONDER_PUBLISH_CODE_REVISION||'')))throw Error('发布需要明确的 feat/ 分支、版本目录和博客软链接；当前不允许写 master/main。');
-  return {repoDir:path.resolve(env.WONDER_PUBLISH_REPO_DIR),enabled,branch,enforceRemote:true,codeRevision:env.WONDER_PUBLISH_CODE_REVISION,releaseDir:env.WONDER_PUBLISH_RELEASE_DIR,liveLink:env.WONDER_PUBLISH_LIVE_LINK};
+  const mode=env.WONDER_PUBLISH_MODE||'static';
+  if(!['static','runtime'].includes(mode))throw Error('Unknown publication mode');
+  const config={mode,repoDir:path.resolve(env.WONDER_PUBLISH_REPO_DIR),enabled,branch,enforceRemote:true,codeRevision:env.WONDER_PUBLISH_CODE_REVISION,releaseDir:env.WONDER_PUBLISH_RELEASE_DIR,liveLink:env.WONDER_PUBLISH_LIVE_LINK};
+  if(mode==='runtime')validateRuntimePaths(config);
+  return config;
 }
 function writeJson(file,value){const temp=file+'.tmp',fd=fs.openSync(temp,'w',0o600);try{fs.writeFileSync(fd,JSON.stringify(value));fs.fsyncSync(fd);}finally{fs.closeSync(fd);}fs.renameSync(temp,file);}
 function writeContent(root,relative,bytes){
@@ -22,7 +27,7 @@ function writeContent(root,relative,bytes){
 }
 export function openPublications({dataDir,store,config,adapter,sourceRoots}){
   const root=path.join(dataDir,'publications');fs.mkdirSync(root,{recursive:true,mode:0o700});
-  const driver=adapter||(config?gitPublisher(config):null);
+  const driver=adapter||(config?(config.mode==='runtime'?runtimePublisher(config):gitPublisher(config)):null);
   let active=null;
   function read(id){if(!uuid.test(id))throw new StoreError(400,'无效的发布编号');try{return JSON.parse(fs.readFileSync(path.join(root,id,'job.json'),'utf8'));}catch{throw new StoreError(404,'发布记录不存在');}}
   function save(job){job.updatedAt=new Date().toISOString();writeJson(path.join(root,job.id,'job.json'),job);return job;}
@@ -57,7 +62,7 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
       const last=history.find(j=>j.state==='published');
       const target=articlePath(input.path);
       if(last&&target!==last.path)throw new StoreError(409,'已发布文章沿用原路径，不能在这里修改网址。');
-      const job={id:randomUUID(),draftId,revision:draft.revision,state:'building',buildVersion:3,previewOnly:true,timings:[],codeRevision:config?.codeRevision,title:draft.title,path:target,description:input.description,published:input.published,createdAt:new Date().toISOString()};
+      const job={id:randomUUID(),draftId,revision:draft.revision,state:'building',buildVersion:3,mode:config?.mode||'static',previewOnly:true,timings:[],codeRevision:config?.codeRevision,title:draft.title,path:target,description:input.description,published:input.published,createdAt:new Date().toISOString()};
       fs.mkdirSync(path.join(root,job.id),{mode:0o700});save(job);
       launch(job,async()=>{
         const measure=(stage,task)=>step(job,stage,task);
@@ -90,6 +95,7 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
       if(active)throw new StoreError(409,'已有文章正在构建或发布，请稍后重试。');
       if(!['ready','retry'].includes(job.state)||input.revision!==job.revision||input.confirm!==true)throw new StoreError(409,'请先完成检查与预览，再明确确认发布。');
       if(list().some(j=>j.state==='retry'&&j.id!==id))throw new StoreError(409,'请先处理上一次未完成的发布。');
+      if((job.mode||'static')!==(config.mode||'static'))throw new StoreError(409,'发布模式已切换，请重新生成预览；未完成提交请先由部署方核对。');
       if(job.state==='ready')unchanged(job);
       job.state='publishing';job.error='';job.finishedAt=null;save(job);
       launch(job,async()=>{

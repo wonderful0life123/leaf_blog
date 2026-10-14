@@ -44,10 +44,11 @@ export async function getStaticPaths() {
 	});
 }
 
-const { entry } = Astro.props;
-const { Content, headings } = await render(entry);
-
-const { remarkPluginFrontmatter } = await render(entry);
+const entry = import.meta.env.WONDER_RUNTIME_BUILD ? (await getSortedPosts()).find(p=>p.id===Astro.params.slug) : Astro.props.entry;
+if(!entry)return new Response('Not found',{status:404});
+const rendered = await render(entry);
+const { Content } = rendered;
+const {headings,remarkPluginFrontmatter}=import.meta.env.WONDER_RUNTIME_BUILD?entry.data.runtimeRender!:rendered;
 
 const bannerPostMeta = {
 	title: entry.data.title,
@@ -75,7 +76,7 @@ if (processedImage) {
 	);
 	if (isLocal) {
 		const basePath = getFileDirFromPath(entry.filePath || "");
-		const files = import.meta.glob<ImageMetadata>("../../**", {
+		const files = import.meta.glob<ImageMetadata>("../../**/*.{png,jpg,jpeg,webp,avif,gif,svg,PNG,JPG,JPEG,WEBP,AVIF,GIF,SVG}", {
 			import: "default",
 		});
 		let normalizedPath = path
@@ -100,7 +101,7 @@ if (posterAvatarUrl) {
 		posterAvatarUrl.startsWith("data:")
 	);
 	if (isLocalAvatar) {
-		const files = import.meta.glob<ImageMetadata>("../../**", {
+		const files = import.meta.glob<ImageMetadata>("../../**/*.{png,jpg,jpeg,webp,avif,gif,svg,PNG,JPG,JPEG,WEBP,AVIF,GIF,SVG}", {
 			import: "default",
 		});
 		const normalizedPath = path

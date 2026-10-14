@@ -21,12 +21,17 @@
     "studio:test": "node scripts/studio/build-preview.mjs && node --test tests/studio/*.test.mjs",
     "studio:build": "WONDER_STUDIO_BUILD=1 ASTRO_TELEMETRY_DISABLED=1 node node_modules/astro/bin/astro.mjs build && node scripts/studio/build-preview.mjs",
     "studio:serve": "node --env-file=.env.studio scripts/studio/server.mjs",
-    "studio:preview:build": "node scripts/studio/build-preview.mjs"
+    "studio:preview:build": "node scripts/studio/build-preview.mjs",
+    "runtime:build": "node scripts/runtime/build.mjs",
+    "runtime:serve": "node scripts/runtime/serve.mjs",
+    "runtime:initialize": "node scripts/runtime/initialize.mjs",
+    "runtime:test": "node tests/studio/runtime-publish.smoke.mjs"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.8",
     "@astrojs/compiler-rs": "^0.1.9",
     "@astrojs/mdx": "^5.0.4",
+    "@astrojs/node": "10.0.6",
     "@astrojs/rss": "^4.0.18",
     "@astrojs/sitemap": "^3.7.2",
     "@astrojs/svelte": "8.0.5",

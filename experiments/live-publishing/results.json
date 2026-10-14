@@ -1,0 +1,54 @@
+{
+  "prototype": true,
+  "astro": "6.1.9",
+  "adapter": "10.0.6",
+  "buildMs": 10535,
+  "buildCount": 1,
+  "compiledHashUnchanged": true,
+  "measurements": [
+    {
+      "scenario": "cold home",
+      "homeMs": 632
+    },
+    {
+      "scenario": "create",
+      "articleMs": 33,
+      "homeMs": 19,
+      "metadataMs": 5,
+      "verifiedMs": 111
+    },
+    {
+      "scenario": "body update",
+      "articleMs": 26,
+      "homeMs": 20,
+      "metadataMs": 4,
+      "verifiedMs": 93
+    },
+    {
+      "scenario": "metadata update",
+      "articleMs": 22,
+      "homeMs": 18,
+      "metadataMs": 3,
+      "verifiedMs": 86
+    }
+  ],
+  "checks": [
+    "home and real article theme",
+    "new route after build",
+    "body and metadata update",
+    "draft excluded",
+    "new image after build",
+    "code and math",
+    "delete and restore",
+    "same URLs, no cache busters",
+    "same server PID and artifact hashes"
+  ],
+  "exclusions": [
+    "GitHub push and Studio UI",
+    "production server/CDN",
+    "RSS/sitemap/Pagefind regeneration",
+    "image optimization",
+    "MDX and concurrent publication"
+  ],
+  "environment": "Local macOS, one production build, isolated published snapshot; not end-to-end publishing"
+}

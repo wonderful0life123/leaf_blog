@@ -1,3 +1,5 @@
+import nodeAdapter from "@astrojs/node";
+import { runtimeIntegration } from "./scripts/runtime/integration.mjs";
 import { expressiveOptions, markdownOptions } from "./src/markdown.config";
 import { studioLocalPlugin } from './scripts/studio/plugin.mjs';
 import sitemap from "@astrojs/sitemap";
@@ -8,20 +10,26 @@ import swup from "@swup/astro";
 import { defineConfig } from "astro/config";
 import expressiveCode from "astro-expressive-code";
 import icon from "astro-icon";
-import { siteConfig } from "./src/config";
+import { siteConfig, galleryConfig } from "./src/config";
 import mdx from "@astrojs/mdx";
+import { fileURLToPath } from "node:url";
+import { iconIncludes } from "./scripts/icon-include.mjs";
 
 if (process.env.NODE_ENV === "development") {
 	setMaxListeners(20);
 }
 
 // https://astro.build/config
+const runtime = process.env.WONDER_RUNTIME_BUILD === "1";
+if(runtime && process.env.WONDER_STUDIO_BUILD === "1") throw Error("Runtime and Studio builds must be separate");
+const iconOptions = {include: {}};
 export default defineConfig({
+  ...(runtime ? {adapter:nodeAdapter({mode:"standalone"}),outDir:"./runtime-dist"} : {}),
   ...(process.env.WONDER_STUDIO_BUILD === "1" ? {outDir: "./studio-dist", build: {assets: "studio-static"}} : {}),
 	site: siteConfig.site_url,
 	
 	base: "/",
-	trailingSlash: "always",
+	trailingSlash: runtime ? "ignore" : "always",
 
 	// 图像优化配置
 	image: {
@@ -37,6 +45,28 @@ export default defineConfig({
 	},
 
 	integrations: [
+    ...(runtime ? [runtimeIntegration(siteConfig,galleryConfig)] : []),
+		{
+			name: "wonder-build-icons",
+			hooks: {
+				"astro:config:setup": ({ command, config }) => {
+					iconOptions.include = command === "build" ? iconIncludes(fileURLToPath(config.root)) : {};
+				},
+			},
+		},
+		{
+			name: "wonder-studio-route",
+			hooks: {
+				"astro:config:setup": ({ command, injectRoute }) => {
+					// Empty getStaticPaths does not stop Astro compiling a page's
+					// editor imports. Do not register the private app in public builds.
+					if (process.env.WONDER_STUDIO_BUILD === "1" ||
+						(command === "dev" && process.env.WONDER_STUDIO_LOCAL === "1")) {
+						injectRoute({ pattern: "/studio/[...entry]", entrypoint: "./src/components/studio/StudioPage.astro" });
+					}
+				},
+			},
+		},
 		swup({
 			theme: false,
 			// Studio is built and deployed separately; do not retain either app's navigation or editor state across this boundary.
@@ -58,8 +88,8 @@ export default defineConfig({
 				"#floating-toc-wrapper",
 			],
 			smoothScrolling: false,
-			cache: true,
-			preload: true,
+			cache: !runtime,
+			preload: !runtime,
 			accessibility: true,
 			updateHead: true,
 			updateBodyClass: false,
@@ -72,19 +102,10 @@ export default defineConfig({
 				return event.state?.url?.includes("#");
 			},
 		}),
-		icon({
-			include: {
-				"material-symbols": ["*"],
-				"fa7-brands": ["*"],
-				"fa7-regular": ["*"],
-				"fa7-solid": ["*"],
-				"simple-icons": ["*"],
-				mdi: ["*"],
-			},
-		}),
+		icon(iconOptions),
 		expressiveCode(expressiveOptions),
 		svelte(),
-		sitemap({
+		...(!runtime ? [sitemap({
 			filter: (page) => {
 				// 根据页面开关配置过滤sitemap
 				const url = new URL(page);
@@ -108,11 +129,12 @@ export default defineConfig({
 
 				return true;
 			},
-		}),
+		})] : []),
 		mdx(),
 	],
 	markdown: markdownOptions,
 	vite: {
+    define: {"import.meta.env.WONDER_RUNTIME_BUILD": JSON.stringify(runtime)},
 		plugins: [tailwindcss(), studioLocalPlugin()],
 		server: {
 			watch: {

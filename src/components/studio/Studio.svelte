@@ -22,7 +22,7 @@
   let bodyEditor, publishing = false, timer, toastTimer;
   let publishInfo=null, publication=null, publishError='',publishConsent=false,publishTimer;
   let publishPath='',publishDescription='',publishDate='';
-  const publicationStages={source:'核对博客版本',workspace:'准备预览环境',content:'检查正文与图片',render:'渲染当前文章',build:'构建发布版本',icons:'准备图标',site:'生成博客页面与图片',search:'生成搜索索引',reuse:'读取已有预览'};
+  const publicationStages={source:'核对博客版本',workspace:'准备预览环境',content:'检查正文与图片',render:'渲染当前文章',build:'构建发布版本',icons:'准备图标',site:'生成博客页面与图片',search:'生成搜索索引',snapshot:'准备文章与图片',feeds:'更新订阅与站点地图',reuse:'读取已有预览'};
   const duration=ms=>ms<1000?'不到 1 秒':ms<60000?`${Math.round(ms/1000)} 秒`:`${Math.floor(ms/60000)} 分 ${Math.floor(ms%60000/1000)} 秒`;
   let dirty = false, saving = false, saveError = '', conflict = false, editVersion = 0, saveTask = null;
   let recoveryWarning = '', loadError = '';
@@ -331,7 +331,7 @@
       {#if !publishInfo}<p class="modal-copy">{publishing?'正在读取发布设置…':'发布设置尚未加载。'}</p>
       {:else if !publishInfo.available}<p class="modal-copy">草稿已保存。服务器尚未配置发布服务，配置后即可在这里生成预览并发布。</p>
       {:else}
-        <p class="modal-copy">先查看当前文章的排版、代码和图片。确认发布后才构建完整博客，构建成功后上线。</p>
+        <p class="modal-copy">先查看当前文章的排版、代码和图片。确认发布后生成正式发布内容，成功后更新博客。</p>
         <div class="publication-fields">
           <label>文章路径<input aria-label="发布文章路径" bind:value={publishPath} disabled={publishing||['building','publishing','retry'].includes(publication?.state)||current.source?.root==='blog'||!!current.publication} on:input={resetPublication} placeholder="writing/my-first-post.md"/><small>目录与分类分别管理；发布后保持网址不变。</small></label>
           <label>发布日期<input type="date" aria-label="发布日期" bind:value={publishDate} disabled={publishing||['building','publishing','retry'].includes(publication?.state)} on:input={resetPublication}/></label>

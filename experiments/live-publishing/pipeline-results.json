@@ -1,0 +1,128 @@
+{
+  "isolated": true,
+  "buildMs": 9140,
+  "buildCount": 1,
+  "compiledHashUnchanged": true,
+  "measurements": [
+    {
+      "scenario": "first publication",
+      "previewMs": 678,
+      "confirmToPublishedMs": 672,
+      "includingHTTPVerificationMs": 1722,
+      "timings": [
+        {
+          "stage": "source",
+          "durationMs": 90,
+          "status": "complete"
+        },
+        {
+          "stage": "workspace",
+          "durationMs": 180,
+          "status": "complete"
+        },
+        {
+          "stage": "content",
+          "durationMs": 12,
+          "status": "complete"
+        },
+        {
+          "stage": "render",
+          "durationMs": 347,
+          "status": "complete"
+        },
+        {
+          "stage": "snapshot",
+          "durationMs": 13,
+          "status": "complete"
+        },
+        {
+          "stage": "feeds",
+          "durationMs": 5,
+          "status": "complete"
+        },
+        {
+          "stage": "search",
+          "durationMs": 36,
+          "status": "complete"
+        },
+        {
+          "stage": "build",
+          "durationMs": 72,
+          "status": "complete"
+        }
+      ],
+      "commit": "a1505aa531ee98077979fe7f9d7f83b7fe481144"
+    },
+    {
+      "scenario": "body and metadata update",
+      "previewMs": 349,
+      "confirmToPublishedMs": 629,
+      "includingHTTPVerificationMs": 1202,
+      "timings": [
+        {
+          "stage": "source",
+          "durationMs": 81,
+          "status": "complete"
+        },
+        {
+          "stage": "workspace",
+          "durationMs": 182,
+          "status": "complete"
+        },
+        {
+          "stage": "content",
+          "durationMs": 10,
+          "status": "complete"
+        },
+        {
+          "stage": "render",
+          "durationMs": 25,
+          "status": "complete"
+        },
+        {
+          "stage": "snapshot",
+          "durationMs": 13,
+          "status": "complete"
+        },
+        {
+          "stage": "feeds",
+          "durationMs": 5,
+          "status": "complete"
+        },
+        {
+          "stage": "search",
+          "durationMs": 34,
+          "status": "complete"
+        },
+        {
+          "stage": "build",
+          "durationMs": 72,
+          "status": "complete"
+        }
+      ],
+      "commit": "4018e39afd836ab7f565721b81235cefe0732518"
+    }
+  ],
+  "checks": [
+    "two real HTTP preview/confirm flows and local Git pushes",
+    "home/archive/article/feed/sitemap/media updated together",
+    "versioned Pagefind bundles and old assets retained",
+    "duplicate confirm blocked/idempotent",
+    "draft data excluded",
+    "real rejected push preserves site; manager restart retries same commit",
+    "post-push activation failure preserves previous release; restart retry creates no extra commit",
+    "draft changes during candidate build block commit and activation",
+    "real concurrent remote commit rejects stale preview"
+  ],
+  "limitations": [
+    "local bare remote, not GitHub network",
+    "no production CDN; HTML/manifest use no-store",
+    "RSS description-only, sitemap prototype static URL list",
+    "no MDX/encrypted posts/image optimizer or high-concurrency load test"
+  ],
+  "browserChecks": [
+    "Real theme search finds updated body",
+    "Same open page follows release rollback and reactivation without reload (prior run, same search proxy)",
+    "Final search excerpt strips HTML tags"
+  ]
+}

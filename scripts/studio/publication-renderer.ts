@@ -29,3 +29,11 @@ export async function renderArticle(text:string,assets:Record<string,string>){
   const meta=[new Date(data.published).toISOString().slice(0,10),data.category,...(data.tags||[]).map((s:string)=>'#'+s)].filter(Boolean).map(escape).join(' · ');
   return `<!doctype html><html data-light-theme="${escape(expressiveCodeConfig.lightTheme)}" data-dark-theme="${escape(expressiveCodeConfig.darkTheme)}" lang="${escape(siteConfig.lang)}" data-theme="${escape(expressiveCodeConfig.lightTheme)}" style="--hue:${Number(siteConfig.themeColor.hue)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${escape(data.title)}</title><link rel="stylesheet" href="/preview-assets/preview.css"></head><body><main class="preview-page"><article class="preview-article"><h1 class="preview-title">${escape(data.title)}</h1><div class="preview-meta">${meta}</div>${data.description?`<p class="preview-description">${escape(data.description)}</p>`:''}<div class="prose dark:prose-invert prose-base max-w-none custom-md markdown-content">${rendered.code}</div></article></main></body></html>`;
 }
+
+// Shared production content renderer: compiled at code deployment, not per post.
+export {postSchema} from '../../src/content-schema';
+export const runtimeSettings={site:siteConfig.site_url,title:siteConfig.title,description:siteConfig.subtitle,lang:siteConfig.lang,postsPerPage:siteConfig.pagination.postsPerPage,pages:siteConfig.pages,generateOgImages:siteConfig.generateOgImages};
+export async function renderPublishedBody(content:string,data:any,assets:Record<string,string>){
+  const rendered=await processor.render(content,{frontmatter:{...data,previewAssets:assets}});
+  return {html:rendered.code,headings:rendered.metadata.headings,remarkPluginFrontmatter:rendered.metadata.frontmatter};
+}

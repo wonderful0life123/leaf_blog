@@ -1,5 +1,5 @@
 ---
-import type { CollectionEntry } from "astro:content";
+import type { PublishedPost } from "@/runtime/content";
 import { render } from "astro:content";
 import { Icon } from "astro-icon/components";
 import CoverImage from "@/components/common/CoverImage.astro";
@@ -12,7 +12,7 @@ import { getFileDirFromPath, getTagUrl } from "@/utils/url-utils";
 
 interface Props {
 	class?: string;
-	entry: CollectionEntry<"posts">;
+	entry: PublishedPost;
 	title: string;
 	url: string;
 	published: Date;
@@ -61,7 +61,7 @@ const descriptionLines = Math.max(
 const descriptionClampLines = String(descriptionLines);
 const shouldClampDescription = descriptionLines > 0;
 
-const { remarkPluginFrontmatter } = await render(entry);
+const { remarkPluginFrontmatter } = import.meta.env.WONDER_RUNTIME_BUILD ? entry.data.runtimeRender! : await render(entry);
 const descriptionText = description || remarkPluginFrontmatter.excerpt || "";
 ---
 

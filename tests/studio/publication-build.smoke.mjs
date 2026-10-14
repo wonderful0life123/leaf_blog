@@ -7,13 +7,25 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {openStore} from '../../scripts/studio/store.mjs';
 import {openPublications} from '../../scripts/studio/publications.mjs';
+import {assertPublicArtifacts} from './public-artifacts.mjs';
 const source=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'wonder-publication-build-'));
 const repo=path.join(root,'repo'),remote=path.join(root,'remote.git');
 const git=(args,cwd=root)=>execFileSync('git',args,{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
 let store,passed=false;
 try {
-  git(['clone','--shared','--no-hardlinks',source,repo]);git(['init','--bare',remote]);git(['config','receive.shallowUpdate','true'],remote);git(['remote','set-url','origin',remote],repo);git(['checkout','-b','feat/publish-test'],repo);git(['push','origin','feat/publish-test'],repo);
+  git(['clone','--shared','--no-hardlinks',source,repo]);git(['init','--bare',remote]);git(['config','receive.shallowUpdate','true'],remote);git(['remote','set-url','origin',remote],repo);git(['checkout','-b','feat/publish-test'],repo);
+  // Opt in when testing uncommitted work. Snapshot only Git-visible files into
+  // the isolated clone; private ignored data and the source index stay untouched.
+  if(process.argv.includes('--worktree')){
+    const patch=execFileSync('git',['diff','--binary','HEAD'],{cwd:source});
+    if(patch.length)execFileSync('git',['apply','--binary','-'],{cwd:repo,input:patch});
+    const added=execFileSync('git',['ls-files','--others','--exclude-standard','-z'],{cwd:source,encoding:'utf8'}).split('\0').filter(Boolean);
+    for(const file of added){fs.mkdirSync(path.dirname(path.join(repo,file)),{recursive:true});fs.copyFileSync(path.join(source,file),path.join(repo,file));}
+    git(['add','-A'],repo);
+    if(git(['diff','--cached','--name-only'],repo))git(['-c','user.name=Studio test','-c','user.email=test@example.invalid','commit','-m','Isolated working tree test snapshot'],repo);
+  }
+  git(['push','origin','feat/publish-test'],repo);
   fs.symlinkSync(path.join(source,'node_modules'),path.join(repo,'node_modules'),'dir');fs.symlinkSync(path.join(source,'.studio-preview'),path.join(repo,'.studio-preview'),'dir');fs.appendFileSync(path.join(repo,'.git/info/exclude'),'\nnode_modules\n.studio-preview\n');
   const releases=path.join(root,'releases'),live=path.join(root,'current');fs.mkdirSync(path.join(releases,'before'),{recursive:true});fs.writeFileSync(path.join(releases,'before/index.html'),'old');fs.symlinkSync(path.join(releases,'before'),live);
   const sourceRoots={blog:path.join(repo,'src/content/posts')};
@@ -40,6 +52,10 @@ try {
     const preview=manager.preview(job.id,'posts/writing/publish-smoke/').bytes.toString();assert.ok(preview.includes('Build verification'));assert.ok(preview.includes('katex'));assert.ok(!preview.includes('<script'));
     manager.confirm(job.id,{revision:draft.revision,confirm:true});const done=await wait(job.id);assert.equal(done.state,'published',JSON.stringify(done));commits.push(done.commit);
     const page=fs.readFileSync(path.join(live,'posts/writing/publish-smoke/index.html'),'utf8');assert.ok(page.includes('Publish smoke'));assert.ok(!page.includes('/studio-api/media/'));
+    assertPublicArtifacts(path.join(root,'data/publications',job.id,'work/dist'));
+    for(const name of ['index.html','archive/index.html','rss.xml','sitemap-0.xml'])assert.ok(fs.readFileSync(path.join(live,name),'utf8').includes('writing/publish-smoke'),`${name} must include the new article`);
+    assert.ok(page.includes('katex'));assert.ok(page.includes('print'));assert.ok(page.includes('data-icon="material-symbols:home"'));
+    if(round===1)assert.ok(page.includes('Second revision.'));
     const changed=git(['diff-tree','--no-commit-id','--name-only','-r',done.commit],repo).split('\n');assert.ok(changed.every(name=>name.startsWith('src/content/posts/writing/')));assert.equal(manager.decorate([draft])[0].status,'published');assert.ok(fs.readFileSync(path.join(sourceRoots.blog,'writing/publish-smoke.md'),'utf8').includes('Publish smoke'));
     if(round===0)draft=store.update(draft.id,{...draft,body:draft.body+'\nSecond revision.\n'});
   }

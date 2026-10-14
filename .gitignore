@@ -50,3 +50,6 @@ studio-dist/
 
 # Private compiled article renderer (deploy separately, never under public dist)
 .studio-preview/
+
+# Separately deployed public runtime and local diagnostic output
+runtime-dist/

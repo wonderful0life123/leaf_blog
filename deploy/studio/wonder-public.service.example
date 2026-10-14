@@ -1,0 +1,22 @@
+# Adjust Node path, read-only code directory and dedicated group to the host.
+[Unit]
+Description=Wonder public blog
+After=network.target
+
+[Service]
+Type=simple
+User=wonder-public
+Group=wonder-public
+WorkingDirectory=/srv/wonder-publisher/leaf_blog
+EnvironmentFile=/etc/wonder-public.env
+ExecStart=/usr/bin/node scripts/runtime/serve.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+# Ensure all parents of the code/content paths permit this group to traverse.
+
+[Install]
+WantedBy=multi-user.target

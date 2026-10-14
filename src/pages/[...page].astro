@@ -13,7 +13,13 @@ export const getStaticPaths = (async ({ paginate }) => {
 }) satisfies GetStaticPaths;
 // https://github.com/withastro/astro/issues/6507#issuecomment-1489916992
 
-const { page } = Astro.props;
+let { page } = Astro.props;
+if(import.meta.env.WONDER_RUNTIME_BUILD){
+ const posts=await getSortedPosts(),size=siteConfig.pagination.postsPerPage,current=Number(Astro.params.page||1),last=Math.max(1,Math.ceil(posts.length/size));
+ if(!Number.isInteger(current)||current<1||current>last)return new Response('Not found',{status:404});
+ const link=(n:number)=>n===1?'/':`/${n}/`;
+ page={data:posts.slice((current-1)*size,current*size),size,total:posts.length,currentPage:current,lastPage:last,start:(current-1)*size,end:Math.min(current*size,posts.length)-1,url:{current:link(current),first:'/',last:link(last),prev:current>1?link(current-1):undefined,next:current<last?link(current+1):undefined}};
+}
 
 const len = page.data.length;
 ---
