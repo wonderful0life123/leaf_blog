@@ -287,6 +287,18 @@ async function runPipeline() {
 		);
 		assert.equal(manifest.id, job.id);
 		await publicRead(manifest.search);
+		// Pagefind metadata/index extensions contain underscores; never canonicalize them as HTML.
+		for (const file of fs.readdirSync(path.join(live(), "pagefind"), {
+			recursive: true,
+		})) {
+			if (!fs.statSync(path.join(live(), "pagefind", file)).isFile()) continue;
+			const asset = await fetch(
+				origin + "/runtime-search/" + job.id + "/" + file,
+				{ redirect: "manual" },
+			);
+			assert.equal(asset.status, 200, "Pagefind asset: " + file);
+		}
+
 		if (previousSearch) {
 			assert.notEqual(manifest.search, previousSearch);
 			await publicRead(previousSearch);

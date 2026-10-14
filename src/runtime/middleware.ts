@@ -49,7 +49,7 @@ export const runtimeRequest = defineMiddleware(async (context, next) => {
 		});
 	}
 	if (
-		!/\.[a-zA-Z\d]+$/.test(pathname) &&
+		!/\.[a-zA-Z\d_]+$/.test(pathname) &&
 		!pathname.endsWith("/") &&
 		!pathname.startsWith("/api/")
 	)
@@ -103,7 +103,14 @@ export const runtimeRequest = defineMiddleware(async (context, next) => {
 	}
 	const response =
 		bytes !== undefined
-			? new Response(typeof bytes === "string" ? bytes : new Uint8Array(bytes), { headers: { "Content-Type": contentType } })
+			? new Response(
+					typeof bytes === "string" ? bytes : new Uint8Array(bytes),
+					{
+						headers: {
+							"Content-Type": contentType || "application/octet-stream",
+						},
+					},
+				)
 			: await releaseContext.run(release, () => next());
 	response.headers.set(
 		"Cache-Control",
