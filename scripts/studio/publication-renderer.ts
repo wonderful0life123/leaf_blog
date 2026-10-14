@@ -14,8 +14,16 @@ const escape=(value:unknown)=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&am
 // The validated image bytes are already in the private job; avoid Astro's full-site image pipeline.
 function previewImages(){return (tree:any,file:any)=>{
   const assets=file.data.astro.frontmatter.previewAssets;
+  // Markdown percent-encodes Unicode/spaces in img.src. Compare each URL in
+  // one decoded form, without decoding twice or resolving new filesystem paths.
+  // Targets still come exclusively from the caller's validated asset map.
+  const key=(value:string)=>{try{return decodeURIComponent(value);}catch{return value;}};
+  const normalized=new Map(Object.entries(assets).map(([source,target])=>[key(source),target]));
   visit(tree,'element',(node:any)=>{
-    if(node.tagName==='img' && assets[node.properties.src])node.properties.src=assets[node.properties.src];
+    if(node.tagName!=='img'||typeof node.properties.src!=='string')return;
+    const source=node.properties.src;
+    const target=Object.hasOwn(assets,source)?assets[source]:normalized.get(key(source));
+    if(typeof target==='string')node.properties.src=target;
   });
   file.data.astro.localImagePaths=[];file.data.astro.remoteImagePaths=[];
 };}

@@ -318,7 +318,40 @@ async function runPipeline() {
 		assert.ok(!snapshot.includes("neverpublicsecret"));
 		assert.ok(!snapshot.includes("/studio-api/media/"));
 	}
+	async function verifyExistingCudaImages() {
+		const page = await publicRead("/posts/ai-infra/cuda/global-indexing/");
+		const images = parse(page.text).querySelectorAll(".markdown-content img");
+		assert.equal(images.length, 3, "original CUDA article retains all images");
+		const filenames = [
+			"file-20260516173113359.webp",
+			"003.DbAsiMCW_1mrdxw.webp",
+			"004.Bgaxujgw_XFgdz.webp",
+		];
+		const rss = (await publicRead("/rss.xml")).text;
+		for (const [index, img] of images.entries()) {
+			const url = img.getAttribute("src");
+			assert.ok(url.startsWith("/published-media/"), url);
+			const response = await fetch(origin + url, { redirect: "manual" });
+			assert.equal(response.status, 200, url);
+			assert.ok(response.headers.get("content-type").startsWith("image/"));
+			assert.deepEqual(
+				Buffer.from(await response.arrayBuffer()),
+				fs.readFileSync(
+					path.join(
+						repo,
+						"src/content/posts/ai-infra/cuda/assets/全局位置计算",
+						filenames[index],
+					),
+				),
+			);
+			assert.ok(
+				rss.includes("https://wonder-ai.info" + url),
+				"full RSS uses the same mapped image",
+			);
+		}
+	}
 	try {
+		await verifyExistingCudaImages();
 		await publicRead("/posts/writing/runtime-pipeline/", 404);
 		for (const round of [1, 2]) {
 			if (round === 2)
@@ -362,6 +395,10 @@ async function runPipeline() {
 				commit: done.commit,
 			});
 		}
+		await verifyExistingCudaImages();
+		checks.push(
+			"original three CUDA images return exact bytes before and after publishing",
+		);
 		checks.push(
 			"two real HTTP preview/confirm flows and local Git pushes",
 			"home/archive/article/feed/sitemap/media updated together",
