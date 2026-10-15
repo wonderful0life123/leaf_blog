@@ -18,10 +18,18 @@ export function livePlan(text) {
       if(name!=='HTMLBlock'){
         const token=marked.lexer(raw).find(t=>t.type==='code');
         const opening=n.firstChild,closing=n.lastChild;
-        // Nested container prefixes remain in the editable source; only standalone fenced blocks become cards.
-        const complete=name==='FencedCode'&&n.parent.name==='Document'&&closing?.name==='CodeMark'&&closing.from>opening.from;
         const lineStart=text.lastIndexOf('\n',n.from-1)+1;
-        add('codeblock',complete?lineStart:n.from,n.to,{complete,code:token?.text||'',language:token?.lang?.split(/\s/)[0]||'text',codeFrom:text.indexOf('\n',n.from)+1});
+        // A fence on its own line can also belong to a list. Keep inline list/quote
+        // prefixes editable; don't consume them in a block replacement.
+        const complete=name==='FencedCode'&&/^[\t ]*$/.test(text.slice(lineStart,n.from))&&closing?.name==='CodeMark'&&closing.from>opening.from;
+        // Lezer's CodeText ranges exclude container indentation but retain actual
+        // code indentation and blank lines. Lexing a sliced nested block loses that context.
+        const codeParts=[];let codeFrom=text.indexOf('\n',n.from)+1;
+        if(name==='FencedCode')for(let c=n.firstChild;c;c=c.nextSibling)if(c.name==='CodeText'){
+          if(!codeParts.length)codeFrom=c.from;
+          codeParts.push(text.slice(c.from,c.to));
+        }
+        add('codeblock',complete?lineStart:n.from,n.to,{complete,code:name==='FencedCode'?codeParts.join(''):token?.text||'',language:token?.lang?.split(/\s/)[0]||'text',codeFrom});
       }
       return false;
     }

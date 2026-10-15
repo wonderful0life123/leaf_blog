@@ -74,3 +74,28 @@ test('引用和列表中的表格继续使用源码编辑，不因解析差异�
  }
  const table=livePlan('| A | B |\n| :--- | ---: |\n| x | y |').find(i=>i.kind==='table');assert.equal(table.editable,true);assert.deepEqual(table.align,['left','right']);
 });
+
+test('编号列表内独占行的代码围栏渲染为卡片，保留代码缩进与空行',()=>{
+ for(const [prefix,indent] of [['9. 检查','   '],['- 外层\n  - 检查','    ']]){
+  const doc=prefix+'\n\n'+indent+'```bash\n'+indent+'ss -lntup\n'+indent+'  docker ps\n\n'+indent+'docker inspect <container>\n'+indent+'```\n\n结尾';
+  let state=stateFor(doc,{anchor:doc.length},[history()]);
+  const card=rendered(state).find(x=>x.item.kind==='codeblock');
+  assert.ok(card,'光标离开列表内代码后应隐藏围栏并显示卡片');
+  assert.equal(card.item.code,'ss -lntup\n  docker ps\n\ndocker inspect <container>');
+  assert.equal(card.item.language,'bash');
+  assert.equal(card.from,doc.indexOf(indent+'```'));
+  state=state.update({selection:{anchor:card.item.codeFrom}}).state;
+  assert.ok(!rendered(state).some(x=>x.item.kind==='codeblock'));
+  assert.equal(state.doc.toString(),doc);
+  state=state.update({changes:{from:card.item.codeFrom,insert:'# edited\n'+indent},userEvent:'input'}).state;
+  const command={get state(){return state;},dispatch:tr=>state=tr.state};
+  assert(undo(command));assert.equal(state.doc.toString(),doc);
+  state=state.update({selection:{anchor:doc.length}}).state;
+  assert.ok(rendered(state).some(x=>x.item.kind==='codeblock'));
+ }
+});
+
+test('列表内未闭合围栏仍显示源码，代码标记不被渲染为正文',()=>{
+ const doc='1. 检查\n\n   ```md\n   **code**\n   $x$\n\n结尾';
+ assert.ok(!rendered(stateFor(doc,{anchor:doc.length})).some(x=>['codeblock','math'].includes(x.item.kind)));
+});
