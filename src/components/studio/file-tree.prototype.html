@@ -5,16 +5,17 @@
 <title>wonder · 文件整理交互样例</title>
 <style>
 :root{color-scheme:light;--bg:#edf3ef;--card:#fff;--ink:#243830;--muted:#718178;--line:#e1eae4;--green:#17855c;--soft:#e8f5ee}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.65 system-ui,-apple-system,"PingFang SC",sans-serif}main{max-width:1440px;margin:auto;padding:32px}h1,h2,h3,p{margin:0}h1{font-size:29px;margin:5px 0}h2{font-size:18px}h3{font-size:14px}.brand{color:var(--green);font-weight:650;letter-spacing:2px}.intro{max-width:920px;color:var(--muted)}.top{display:flex;gap:24px;justify-content:space-between;align-items:center}.pill{display:inline-block;border-radius:7px;background:var(--soft);color:var(--green);font-size:12px;padding:3px 9px}.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}button,input,select{font:inherit}button{border:1px solid var(--line);background:white;color:var(--ink);padding:8px 13px;border-radius:8px;cursor:pointer}button:hover{background:var(--soft)}button:disabled{opacity:.45;cursor:default}button.primary{background:var(--green);color:white;border-color:var(--green)}button.active{background:var(--soft);color:var(--green);border-color:#98ccb1}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #91cdb4;outline-offset:2px}.walk{margin-top:24px;border:1px solid var(--line);border-radius:12px;background:#f8fbf9;padding:16px}.walk .tools{margin-bottom:10px}.walk p{color:var(--muted);margin:8px 0}.grid{display:grid;grid-template-columns:1.25fr 1fr;gap:20px;margin-top:20px}.panel{background:var(--card);border:1px solid var(--line);border-radius:15px;overflow:hidden}.head{padding:19px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}.sub{font-size:13px;color:var(--muted);font-weight:400}.tree{padding:14px;min-height:245px}.node{width:100%;display:flex;align-items:center;gap:9px;text-align:left;border:0;border-radius:7px;padding:8px 10px;margin:2px 0;background:transparent;line-height:1.45}.node.selected{background:var(--soft);color:var(--green)}.node.folder{font-weight:600}.glyph{color:var(--green);font-size:17px;min-width:18px}.count{margin-left:auto;color:var(--muted);font-size:12px;font-weight:400}.tree ul{list-style:none;margin:0;padding:0}.tree ul ul{margin-left:19px;padding-left:10px;border-left:1px solid var(--line)}.muted{color:var(--muted)}.empty{padding:16px;font-size:13px;color:var(--muted)}.detail{border-top:1px solid var(--line);padding:20px 22px;background:#fcfefd}.detail h3{font-size:17px;margin-bottom:12px}.facts{display:grid;grid-template-columns:90px 1fr;gap:8px;font-size:13px;margin-bottom:16px}.facts dt{color:var(--muted)}.facts dd{margin:0;overflow-wrap:anywhere}.url{color:var(--green)}label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px}input,select{width:100%;border:1px solid var(--line);border-radius:7px;padding:9px 10px;color:var(--ink);background:#fff}.formrow{display:flex;gap:8px;align-items:center}.formrow input,.formrow select{flex:1;min-width:0}.hint{font-size:12px;color:var(--muted);margin-top:6px}.pending{padding:18px 22px;border-top:1px solid var(--line)}.change{padding:10px 0;border-bottom:1px solid var(--line);font-size:13px;overflow-wrap:anywhere}.change strong{display:block}.change span{display:block;color:var(--muted)}.status{margin-top:16px;padding:12px 16px;border-radius:9px;background:var(--soft);color:var(--green);min-height:48px}.new{padding:0 22px 18px}.public-note{border-top:1px solid var(--line);padding:16px 22px;font-size:13px;color:var(--muted)}.public-article{padding:6px 10px;font-size:14px}.public-article small{display:block;color:var(--muted);font-size:11px;overflow-wrap:anywhere}.footer{color:var(--muted);font-size:12px;margin:18px 0}.select-label{color:var(--green)}@media(max-width:850px){main{padding:18px}.grid{grid-template-columns:1fr}.top{align-items:start;flex-direction:column}h1{font-size:24px}.head{padding:15px}.formrow{flex-wrap:wrap}.formrow select{flex-basis:100%}.facts{grid-template-columns:75px 1fr}}
+
+main{max-width:1160px}.top{margin-bottom:20px}.intro{max-width:790px}.grid{display:block}.tree{padding:18px 26px;min-height:0}.tree ul ul{border-left:1px dashed #dce7df;margin-left:20px;padding-left:24px}.node{padding:13px 12px;min-height:49px}.node.folder{color:var(--green);font-size:19px;font-weight:650}.node.article{font-size:16px}.node .count{background:var(--soft);border-radius:7px;padding:3px 10px;color:var(--green)}.node{user-select:none}.node .grip{color:#98a99f;font-size:15px;cursor:grab}.node.drop-target,.root-drop.drop-target{outline:2px dashed var(--green);background:var(--soft)}.node.dragging{opacity:.35}.detail{border:1px solid #b9deca;border-radius:12px;margin:4px 0 18px;padding:18px 20px;background:#f6fbf8}.detail h3{margin:0 0 4px;font-size:15px}.level-fields{display:flex;flex-wrap:wrap;gap:12px;margin:14px 0}.level{flex:1;min-width:150px}.level label{margin:0 0 5px}.move-line{display:flex;align-items:center;justify-content:space-between;gap:15px;border-top:1px solid var(--line);padding-top:13px}.destination{font-size:14px}.destination strong{color:var(--green)}.current-path{font-size:13px;color:var(--muted)}.facts{margin-top:12px}.detail details{margin-top:14px;font-size:13px;color:var(--muted)}.detail summary{cursor:pointer}.root-drop{font-size:13px;color:var(--muted);padding:8px 12px;border:1px dashed var(--line);border-radius:8px;margin:0 0 12px}.walk{margin-top:20px}.walk summary{cursor:pointer}.new{padding:18px 22px;border-top:1px solid var(--line)}.preview{margin-top:18px}.public-article{padding:10px}.status{margin:12px 0}.node.public-folder:disabled{opacity:1}.drag-note{font-size:12px;color:var(--muted)}@media(max-width:650px){.head{flex-wrap:wrap}.tree{padding:12px}.tree ul ul{margin-left:8px;padding-left:12px}.detail{padding:13px}.node.folder{font-size:17px}.node.article{font-size:14px}.move-line{align-items:start;flex-direction:column}.level{min-width:130px}.top{gap:12px}}
 </style>
 <main>
-<div class="top"><div><div class="brand">wonder · 写作空间</div><h1>像整理笔记一样，整理博客</h1><p class="intro">试一试：文件夹决定默认分类，移动后的公开网址保持不变；整理先留在工作区，确认发布后，读者才看到新目录。</p></div><span class="pill">交互原型 · 仅示例数据</span></div>
-<section class="walk" aria-label="引导演示"><div class="tools" id="scenarios"></div><p id="guide"></p><div class="tools" id="steps"></div></section>
-<div class="status" role="status" id="status">可以自由点击左侧文件，或选择上方场景逐步体验。刷新页面会还原示例。</div>
-<div class="grid">
-<section class="panel"><div class="head"><div><h2>我的文件 <span class="pill" id="pending-count"></span></h2><div class="sub">这里是整理中的真实路径模型</div></div><div class="tools"><button id="undo">撤销整理</button><button id="reset">重置示例</button></div></div><div id="workspace" class="tree"></div><div id="detail" class="detail"></div><div class="new"><label for="new-name">在当前文件夹中新建</label><div class="formrow"><input id="new-name" placeholder="例如：Linux 或 新的笔记"><button id="new-folder">新建文件夹</button><button id="new-article">新建文章</button></div><p class="hint">选择文章时，新内容放入该文章所在目录。空文件夹只显示在工作区。</p></div></section>
-<section class="panel"><div class="head"><div><h2>读者看到的目录</h2><div class="sub">模拟公开版本 · <span id="version">1</span></div></div><span class="pill">网址保持稳定</span></div><div id="public" class="tree"></div><div class="public-note">左侧移动或重命名时，这里保持原样。空文件夹和未发布草稿不对读者展示。</div><div class="pending"><div class="head" style="padding:0 0 10px;border:0"><h2>待发布整理</h2><button id="publish" class="primary">模拟发布整理</button></div><div id="changes"></div><p class="hint">模拟只更新本页状态。新文章仍是草稿，需要单独确认内容后发布。</p></div></section>
-</div>
-<p class="footer">本页不连接数据库、GitHub 或线上博客。路径与分类使用示例中文名称；已有文章是否迁移为这种结构，待体验后再决定。图片引用修复、冲突校验及稳定网址路由尚未实现。</p>
+<div class="top"><div><div class="brand">wonder · 写作空间</div><h1>整理你的文章</h1><p class="intro">点一篇文章，在下方按一级、二级目录选择位置；也可以将文章或文件夹拖入目标文件夹。确认发布整理后，读者才看到变化。</p></div><span class="pill">本地原型 · 示例数据</span></div>
+<div class="status" role="status" id="status"></div>
+<section class="panel"><div class="head"><div><h2>文章目录 <span class="pill" id="pending-count"></span></h2><div class="sub">按文章标题整理 · 公开网址保持不变</div></div><div class="tools"><button id="undo">撤销整理</button><button id="toggle-public" aria-expanded="false">查看已公开目录</button><button id="publish" class="primary">模拟发布整理</button></div></div><div id="workspace" class="tree"></div><div class="new"><label for="new-name">在选中文件夹中新建（选中文章时，使用它所在的文件夹）</label><div class="formrow"><input id="new-name" placeholder="输入文件夹或文章名称"><button id="new-folder">新建文件夹</button><button id="new-article">新建文章</button></div></div><details class="pending"><summary>查看待发布的修改 <span id="change-count"></span></summary><div id="changes"></div><p class="hint">新文章仍是草稿，需要单独确认内容后发布。</p></details></section>
+<section class="panel preview" id="published-panel" hidden><div class="head"><h2>当前已公开目录</h2><span class="sub">模拟版本 <span id="version">1</span></span></div><div id="public" class="tree"></div></section>
+<details class="walk"><summary>需要指引？试试这几个场景</summary><div class="tools" id="scenarios"></div><p id="guide"></p><div class="tools" id="steps"></div></details>
+<div class="tools" style="margin-top:16px"><button id="reset">重置示例</button><span class="drag-note">拖拽：拖到文件夹中移动，拖到“全部文章”回到根目录。手机可使用逐级选择。</span></div>
+<p class="footer">仅验证交互，不读写真实文章、不提交 GitHub。所有修改在内存中，刷新即还原。真实路径移动、图片引用维护及稳定网址适配尚未接入。</p>
 </main>
 <script>
 // PROTOTYPE: in-memory model only. No repository or publication side effects.
@@ -28,7 +29,7 @@ const Model=(()=>{
  {id:'codex',type:'article',name:'server-codex-setup.md',title:'服务器加载 Codex',parent:'writing',url:'/posts/writing/server-codex-setup/',published:true},
  {id:'protect',type:'article',name:'protect-server.md',title:'保护服务器',parent:'writing',url:'/posts/writing/protect-server/',published:true},
  {id:'server',type:'folder',name:'服务器',parent:null},
- {id:'linux',type:'folder',name:'Linux',parent:'server'}];return {nodes,publicNodes:clone(nodes),selected:'protect',version:1,next:1};};
+ {id:'linux',type:'folder',name:'Linux',parent:'server'}];return {nodes,publicNodes:clone(nodes),selected:null,version:1,next:1};};
  const path=(nodes,id)=>{const n=nodes.find(x=>x.id===id);return n?[path(nodes,n.parent),n.name].filter(Boolean).join('/'):'';};
  const category=(nodes,n)=>path(nodes,n.parent)||'未分类';
  const descendant=(nodes,id,ancestor)=>id===ancestor||!!nodes.find(n=>n.id===id&&n.parent&&descendant(nodes,n.parent,ancestor));
@@ -56,9 +57,9 @@ const Model=(()=>{
  }
  return {initial,path,category,descendant,changes,apply,clone};
 })();
-let state=Model.initial(),history=[],message='可以自由点击左侧文件，或选择上方场景逐步体验。刷新页面会还原示例。',scenario=0,step=0;
+let state=Model.initial(),history=[],message='点击文章标题，下方就会展开目录选择。',scenario=0,step=0,targetParent=null,dragged=null;
 const scenarios=[
- {name:'① 移动一篇文章',text:'把《保护服务器》移到“服务器 / Linux”。观察默认分类和网址，再对照发布前后的右侧目录。',steps:[['移到服务器 / Linux',{type:'move',id:'protect',parent:'linux'}],['模拟发布整理',{type:'publish'}]]},
+ {name:'① 移动一篇文章',text:'把《保护服务器》移到“服务器 / Linux”。观察默认分类和网址，再点“查看已公开目录”比较发布前后。',steps:[['移到服务器 / Linux',{type:'move',id:'protect',parent:'linux'}],['模拟发布整理',{type:'publish'}]]},
  {name:'② 整个文件夹改名',text:'“随手记”里有两篇文章。改名会一起调整它们的路径和分类，但两篇文章的网址都保留。',steps:[['随手记 → 运维笔记',{type:'rename',id:'writing',name:'运维笔记'}],['模拟发布整理',{type:'publish'}]]},
  {name:'③ 移错了怎么办',text:'先移动，再撤销。撤销只还原未发布的整理，已经公开的版本不受影响。',steps:[['移动文章',{type:'move',id:'protect',parent:'linux'}],['撤销这次整理',{type:'undo'}]]},
  {name:'④ 不允许的移动',text:'试着把“服务器”放进它自己的“Linux”子文件夹。这个操作会被拒绝，目录保持原样。',steps:[['尝试移动到自身子目录',{type:'move',id:'server',parent:'linux'}]]}
@@ -67,26 +68,61 @@ const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,
 function act(a){try{
  if(a.type==='undo'){if(!history.length)return;state=history.pop();message='已撤销上一次整理，公开版本没有变化。';}
  else {const old=state,next=Model.apply(state,a);if(a.type!=='select'&&a.type!=='publish')history.push(Model.clone(old));state=next;
- if(a.type==='publish'){history=[];message='模拟发布完成：右侧目录已更新，已有文章网址保持不变。';}
- else if(a.type!=='select')message='已暂存整理：左侧路径与默认分类已更新，右侧公开目录尚未变化。';}
- }catch(e){message=e.message;}render();}
+ if(a.type==='publish'){history=[];message='模拟发布完成：公开目录已更新，已有文章网址保持不变。';}
+ else if(a.type==='select')message='已选中，可以在文章下方逐级选择新的位置。';
+ else message='已暂存整理，公开目录尚未变化。可继续整理或撤销。';}
+ }catch(e){message=e.message;}
+ targetParent=state.nodes.find(n=>n.id===state.selected)?.parent||null;render();}
 function hasPublished(nodes,id){return nodes.some(n=>n.type==='article'&&n.published&&Model.descendant(nodes,n.id,id));}
-function tree(nodes,parent=null,pub=false){return '<ul>'+nodes.filter(n=>n.parent===parent&&(!pub||(n.type==='folder'?hasPublished(nodes,n.id):n.published))).map(n=>'<li>'+(n.type==='folder'?`<button class="node folder ${!pub&&state.selected===n.id?'selected':''}" ${pub?'disabled':`data-select="${esc(n.id)}"`}><span class="glyph">▾</span>▱ ${esc(n.name)}<span class="count">${nodes.filter(x=>x.type==='article'&&Model.descendant(nodes,x.id,n.id)&&(!pub||x.published)).length}</span></button>`:pub?`<div class="public-article">${esc(n.title)}<small>${esc(n.url)}</small></div>`:`<button class="node ${state.selected===n.id?'selected':''}" data-select="${esc(n.id)}"><span class="glyph">▤</span>${esc(n.name)}<span class="count">${n.published?'已发布':'草稿'}</span></button>`)+(n.type==='folder'?tree(nodes,n.id,pub):'')+'</li>').join('')+'</ul>';}
-function render(){
- $('workspace').innerHTML=tree(state.nodes);$('public').innerHTML=tree(state.publicNodes,null,true);$('version').textContent=state.version;$('status').textContent=message;
- const n=state.nodes.find(x=>x.id===state.selected),c=Model.changes(state),affected=c.filter(x=>x.node.type==='article'&&x.node.published);
- $('pending-count').textContent=c.length?affected.length+' 篇已发布文章待更新':'无待发布整理';$('undo').disabled=!history.length;$('publish').disabled=!c.length;
- const options='<option value="">根目录</option>'+state.nodes.filter(x=>x.type==='folder').map(x=>`<option value="${x.id}" ${x.id===n.parent?'selected':''}>${esc(Model.path(state.nodes,x.id).replaceAll('/',' / '))}</option>`).join('');
- $('detail').innerHTML=`<h3>${n.type==='article'?esc(n.title):'文件夹：'+esc(n.name)}</h3><dl class="facts"><dt>文章身份</dt><dd>${n.type==='article'?esc(n.id)+'（移动时不变）':'整个子目录一起整理'}</dd><dt>文件路径</dt><dd>src/content/posts/${esc(Model.path(state.nodes,n.id))}</dd><dt>默认分类</dt><dd>${n.type==='article'?esc(Model.category(state.nodes,n)):'子文章跟随各自所在文件夹'}</dd><dt>公开网址</dt><dd class="url">${n.type==='article'?(n.url?esc(n.url)+' · 已固定':'首次发布时确定'):'已有子文章的网址保持不变'}</dd></dl><label for="destination" class="select-label">${n.type==='article'?'所在文件夹 / 默认分类':'移动文件夹到'}</label><div class="formrow"><select id="destination">${options}</select><button id="move">确认移动</button></div><p class="hint">此原型将分类与文件夹关联；改分类就是移动文件，不再维护两套层级。</p><label for="rename">${n.type==='article'?'文件名（不修改文章标题）':'文件夹名称'}</label><div class="formrow"><input id="rename" value="${esc(n.name)}"><button id="rename-button">确认改名</button></div>`;
- $('move').onclick=()=>act({type:'move',parent:$('destination').value||null});$('rename-button').onclick=()=>act({type:'rename',name:$('rename').value});
- $('changes').innerHTML=c.length?c.map(x=>`<div class="change"><strong>${esc(x.node.title||x.node.name)}${!x.node.published&&x.node.type==='article'?' · 仅草稿':''}</strong><span>${esc(x.before||'新建')} → ${esc(x.after)}</span>${x.node.published?'<span>网址不变：'+esc(x.node.url)+'</span>':''}</div>`).join(''):'<p class="empty">没有待发布整理。可以从左侧移动一篇文章开始。</p>';
- document.querySelectorAll('[data-select]').forEach(b=>b.onclick=()=>act({type:'select',id:b.dataset.select}));
- $('scenarios').innerHTML=scenarios.map((s,i)=>`<button class="${i===scenario?'active':''}" data-scenario="${i}" aria-pressed="${i===scenario}">${s.name}</button>`).join('');
- document.querySelectorAll('[data-scenario]').forEach(b=>b.onclick=()=>{scenario=Number(b.dataset.scenario);step=0;state=Model.initial();history=[];message='已还原示例，可以按步骤体验，也可以自由操作。';render();});
- $('guide').textContent=scenarios[scenario].text;$('steps').innerHTML=scenarios[scenario].steps.map(([label],i)=>`<button data-step="${i}" ${i!==step?'disabled':''}>${i<step?'✓':i+1+'.'} ${label}</button>`).join('');
- document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{const action=scenarios[scenario].steps[Number(b.dataset.step)][1];step++;act(action);});
+function tree(nodes,parent=null,pub=false){return '<ul>'+nodes.filter(n=>n.parent===parent&&(!pub||(n.type==='folder'?hasPublished(nodes,n.id):n.published))).map(n=>{
+ const selected=!pub&&state.selected===n.id;
+ const row=pub?(n.type==='folder'?`<div class="node folder public-folder"><span class="glyph">⌄</span>${esc(n.name)}<span class="count">${nodes.filter(x=>x.type==='article'&&x.published&&Model.descendant(nodes,x.id,n.id)).length}</span></div>`:`<div class="public-article">${esc(n.title)}<small>${esc(n.url)}</small></div>`):`<button class="node ${n.type} ${selected?'selected':''}" draggable="false" data-select="${esc(n.id)}" ${n.type==='folder'?`data-drop="${esc(n.id)}"`:''}><span class="grip" aria-hidden="true">⠿</span><span class="glyph">${n.type==='folder'?'⌄':'·'}</span>${esc(n.type==='folder'?n.name:n.title)}<span class="count">${n.type==='folder'?nodes.filter(x=>x.type==='article'&&Model.descendant(nodes,x.id,n.id)).length:n.published?'已发布':'草稿'}</span></button>`;
+ return '<li>'+row+(selected?'<div id="detail" class="detail"></div>':'')+(n.type==='folder'?tree(nodes,n.id,pub):'')+'</li>';
+ }).join('')+'</ul>';}
+function renderDestination(){
+ const n=state.nodes.find(x=>x.id===state.selected);if(!n)return;
+ let chain=[],p=targetParent;while(p){chain.unshift(p);p=state.nodes.find(x=>x.id===p)?.parent;}
+ let html='',parent=null;for(let i=0;i<=chain.length;i++){
+ const children=state.nodes.filter(x=>x.type==='folder'&&x.parent===parent&&!(n.type==='folder'&&Model.descendant(state.nodes,x.id,n.id)));
+ if(!children.length&&i>0)break;
+ const label=['一级目录','二级目录','三级目录','四级目录'][i]||('第 '+(i+1)+' 级目录');
+ html+=`<div class="level"><label for="level-${i}">${label}</label><select id="level-${i}" data-level="${i}" data-parent="${parent||''}"><option value="">${i===0?'全部文章（根目录）':'留在当前目录'}</option>${children.map(x=>`<option value="${x.id}" ${chain[i]===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div>`;
+ if(!chain[i])break;parent=chain[i];
+ }
+ $('levels').innerHTML=html;$('destination-text').textContent=Model.path(state.nodes,targetParent).replaceAll('/',' / ')||'全部文章';$('move').disabled=targetParent===n.parent;
+ document.querySelectorAll('[data-level]').forEach(select=>select.onchange=()=>{targetParent=select.value||select.dataset.parent||null;renderDestination();});
 }
-function create(kind){const n=state.nodes.find(x=>x.id===state.selected);act({type:'new',kind,name:$('new-name').value,parent:n.type==='folder'?n.id:n.parent});$('new-name').value='';}
-$('new-folder').onclick=()=>create('folder');$('new-article').onclick=()=>create('article');$('undo').onclick=()=>act({type:'undo'});$('publish').onclick=()=>act({type:'publish'});$('reset').onclick=()=>{state=Model.initial();history=[];step=0;message='已重置示例，没有修改任何真实内容。';render();};render();
+function renderDetail(){const n=state.nodes.find(x=>x.id===state.selected);if(!n)return;
+ $('detail').innerHTML=`<h3>移动${n.type==='folder'?'文件夹':'文章'} · ${esc(n.title||n.name)}</h3><p class="current-path">当前位置：全部文章 / ${esc(Model.path(state.nodes,n.parent).replaceAll('/',' / ')||'根目录')}</p><div class="level-fields" id="levels"></div><div class="move-line"><span class="destination">移动到：<strong id="destination-text"></strong></span><button id="move" class="primary">移动到这里</button></div><p class="hint">分类跟随目标目录，${n.type==='folder'?'子文章一起移动，':''}已有公开网址不变。</p><details><summary>文件信息与重命名</summary><dl class="facts"><dt>文件路径</dt><dd>src/content/posts/${esc(Model.path(state.nodes,n.id))}</dd><dt>默认分类</dt><dd>${n.type==='article'?esc(Model.category(state.nodes,n)):'子文章跟随各自目录'}</dd><dt>公开网址</dt><dd class="url">${n.type==='article'?esc(n.url||'首次发布时确定'):'子文章网址保持不变'}</dd></dl><label for="rename">${n.type==='article'?'文件名（文章标题不变）':'文件夹名称'}</label><div class="formrow"><input id="rename" value="${esc(n.name)}"><button id="rename-button">确认改名</button></div></details>`;
+ $('move').onclick=()=>act({type:'move',parent:targetParent});$('rename-button').onclick=()=>act({type:'rename',name:$('rename').value});renderDestination();}
+function render(){
+ $('workspace').innerHTML='<div class="root-drop" data-drop="">全部文章 · 拖到这里移回根目录</div>'+tree(state.nodes);$('public').innerHTML=tree(state.publicNodes,null,true);$('version').textContent=state.version;$('status').textContent=message;
+ const c=Model.changes(state);$('pending-count').textContent=c.length?'有待发布整理':'与公开目录一致';$('change-count').textContent=c.length?'（'+c.length+' 项）':'';$('undo').disabled=!history.length;$('publish').disabled=!c.length;
+ renderDetail();
+ $('changes').innerHTML=c.length?c.map(x=>`<div class="change"><strong>${esc(x.node.title||x.node.name)}${!x.node.published&&x.node.type==='article'?' · 仅草稿':''}</strong><span>${esc(x.before||'新建')} → ${esc(x.after)}</span>${x.node.published?'<span>网址不变：'+esc(x.node.url)+'</span>':''}</div>`).join(''):'<p class="empty">没有待发布整理。</p>';
+ document.querySelectorAll('[data-select]').forEach(b=>{
+ b.onclick=()=>{if(suppressClick){suppressClick=false;return;}act({type:'select',id:b.dataset.select});};
+ b.onpointerdown=e=>{if(e.pointerType!=='mouse'||e.button!==0)return;gesture={id:b.dataset.select,x:e.clientX,y:e.clientY,button:b};};
+ });
+ $('scenarios').innerHTML=scenarios.map((s,i)=>`<button class="${i===scenario?'active':''}" data-scenario="${i}" aria-pressed="${i===scenario}">${s.name}</button>`).join('');
+ document.querySelectorAll('[data-scenario]').forEach(b=>b.onclick=()=>{scenario=Number(b.dataset.scenario);step=0;state=Model.initial();history=[];targetParent=null;message='已还原示例，可以按步骤体验，也可以自由操作。';render();});
+ $('guide').textContent=scenarios[scenario].text;$('steps').innerHTML=scenarios[scenario].steps.map(([label],i)=>`<button data-step="${i}" ${i!==step?'disabled':''}>${i<step?'✓':i+1+'.'} ${label}</button>`).join('');
+ document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{const action=scenarios[scenario].steps[Number(b.dataset.step)][1];if(action.id)state.selected=action.id;step++;act(action);});
+}
+let gesture=null,suppressClick=false;
+document.addEventListener('pointermove',e=>{
+ if(!gesture)return;if(!dragged&&Math.hypot(e.clientX-gesture.x,e.clientY-gesture.y)<8)return;
+ dragged=gesture.id;gesture.button.classList.add('dragging');
+ document.querySelectorAll('.drop-target').forEach(x=>x.classList.remove('drop-target'));
+ const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drop]');if(target)target.classList.add('drop-target');
+});
+document.addEventListener('pointerup',e=>{
+ if(!gesture)return;const id=dragged,target=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drop]');
+ gesture=null;dragged=null;document.querySelectorAll('.dragging,.drop-target').forEach(x=>x.classList.remove('dragging','drop-target'));
+ if(id){suppressClick=true;setTimeout(()=>suppressClick=false,0);if(target){state.selected=id;act({type:'move',id,parent:target.dataset.drop||null});}}
+});
+document.addEventListener('pointercancel',()=>{gesture=null;dragged=null;document.querySelectorAll('.dragging,.drop-target').forEach(x=>x.classList.remove('dragging','drop-target'));});
+function create(kind){const n=state.nodes.find(x=>x.id===state.selected);act({type:'new',kind,name:$('new-name').value,parent:n?(n.type==='folder'?n.id:n.parent):null});$('new-name').value='';}
+$('new-folder').onclick=()=>create('folder');$('new-article').onclick=()=>create('article');$('undo').onclick=()=>act({type:'undo'});$('publish').onclick=()=>act({type:'publish'});$('toggle-public').onclick=()=>{const p=$('published-panel');p.hidden=!p.hidden;$('toggle-public').setAttribute('aria-expanded',String(!p.hidden));};$('reset').onclick=()=>{state=Model.initial();history=[];step=0;targetParent=null;message='已重置示例，点击文章试试逐级选择目录。';render();};render();
 </script>
 </html>
