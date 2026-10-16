@@ -58,6 +58,28 @@ body[data-variant=A] .folder-items{display:block;margin-top:22px}.folder-items .
 @media(min-width:701px) and (max-width:1100px){body[data-variant=A] .layout{grid-template-columns:285px minmax(0,1fr)}body[data-variant=A] .read-document{padding:24px}body[data-variant=A] .dock-title small{display:none}}
 @media(max-width:700px){body[data-variant=A] main{padding:0 12px;margin-top:15px}body[data-variant=A] .heading{gap:8px;margin-bottom:12px}body[data-variant=A] .heading p{display:none}body[data-variant=A] h1{font-size:21px}body[data-variant=A] .heading-actions{gap:4px;flex-wrap:wrap;justify-content:flex-end}body[data-variant=A] #pending-button{font-size:10px;padding:5px}body[data-variant=A] .new-group button{font-size:12px;padding:8px}body[data-variant=A] .layout{grid-template-columns:1fr;height:calc(100dvh - 174px);min-height:440px}body[data-variant=A] .content-panel{max-height:none;border:0;border-radius:12px}body[data-variant=A] .reading-pane{display:none;border-radius:12px}body[data-variant=A][data-mobile-pane=reader] .content-panel{display:none}body[data-variant=A][data-mobile-pane=reader] .reading-pane{display:flex}body[data-variant=A] .mobile-back{display:inline-flex!important}body[data-variant=A] .read-head{padding:10px 12px}body[data-variant=A] .breadcrumbs{display:none}body[data-variant=A] .read-actions{margin-left:auto}body[data-variant=A] .read-document{padding:24px 20px}body[data-variant=A] .position-dock{padding:12px;border-radius:0 0 12px 12px}body[data-variant=A] .dock-title small{display:none}body[data-variant=A] .move-bottom{align-items:flex-end}body[data-variant=A] .move-bottom p{max-width:48%;overflow-wrap:anywhere}body[data-variant=A] .footnote>span{font-size:10px}body[data-variant=A] .row .more{opacity:.65}body[data-variant=A] .toast{bottom:65px}}
 
+
+/* A: on-demand placement drawer, anchored to the reader instead of taking reading space. */
+body[data-variant=A] .reading-pane{position:relative;overflow:clip}
+body[data-variant=A] .position-dock{position:absolute;z-index:20;left:0;right:0;bottom:0;background:var(--card);border:1px solid var(--line);border-left:0;border-right:0;border-radius:14px 14px 11px 0;box-shadow:0 -12px 35px #173e2418;padding:20px 24px}
+body[data-variant=A] .position-dock[hidden]{display:none}
+body[data-variant=A] .position-dock:before{content:'';display:block;width:32px;height:3px;border-radius:8px;background:var(--line);margin:-10px auto 14px}
+body[data-variant=A] .dock-title{align-items:flex-start;margin-bottom:18px}
+body[data-variant=A] .sheet-heading{min-width:0;display:flex;flex-direction:column;gap:5px}
+body[data-variant=A] .sheet-heading strong{font-size:15px;line-height:1.5;overflow-wrap:anywhere}
+body[data-variant=A] .sheet-heading small{display:block;font-size:11px;font-weight:400;color:var(--muted)}
+body[data-variant=A] .sheet-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+body[data-variant=A] .sheet-actions #close-move-sheet{font-size:22px;color:var(--muted);width:26px;height:26px;padding:0}
+body[data-variant=A] .position-dock .move-bottom{margin-top:18px}
+body[data-variant=A] .position-dock.searching .destination-search{position:static;border:0;box-shadow:none;padding:0;margin-bottom:0}
+body[data-variant=A] .position-dock.searching .destination-results{max-height:130px}
+body[data-variant=A] .position-dock .picker>button{background:var(--hover)}
+.sheet-enter{animation:sheet-up .22s cubic-bezier(.2,.8,.2,1) both}.sheet-leave{animation:sheet-down .18s ease-in both;pointer-events:none}
+@keyframes sheet-up{from{transform:translateY(100%);opacity:.4}to{transform:translateY(0);opacity:1}}
+@keyframes sheet-down{to{transform:translateY(100%);opacity:0}}
+@media(max-width:700px){body[data-variant=A] .position-dock{position:fixed;left:0;right:0;bottom:0;z-index:40;padding:20px 18px max(20px,env(safe-area-inset-bottom));border-radius:18px 18px 0 0;box-shadow:0 -16px 45px #173e2430}body[data-variant=A] .sheet-heading strong{font-size:14px}body[data-variant=A] .dock-title{gap:12px}body[data-variant=A] .sheet-actions{gap:5px}body[data-variant=A] .position-dock .move-bottom p{max-width:50%}}
+@media(prefers-reduced-motion:reduce){.sheet-enter,.sheet-leave{animation:none}}
+
 </style>
 </head>
 <body>
@@ -265,7 +287,7 @@ const baseAct=act;
 act=function(a){const ok=baseAct(a);if(ok&&state.selected){moveOpen=true;targetParent=selected().parent;render();const r=document.querySelector(`.row[data-id="${state.selected}"]`);r?.classList.add('updated-row');if(variant==='A')r?.scrollIntoView({block:'nearest'});}return ok;};
 
 // A was selected by the user. This refinement still uses scratch data, never the live Studio API.
-let mobilePane='tree',lastRenderedSelection=null,compareOpen=false;
+let mobilePane='tree',lastRenderedSelection=null,compareOpen=false,moveSheetId=null,animateMoveSheet=false;
 const footActions=document.createElement('span');footActions.className='foot-actions';$('undo').before(footActions);footActions.append($('undo'));
 const compareButton=document.createElement('button');compareButton.className='compare-toggle';compareButton.textContent='方案对比';footActions.append(compareButton);
 compareButton.onclick=()=>{compareOpen=!compareOpen;switcher.hidden=!compareOpen;compareButton.textContent=compareOpen?'收起对比':'方案对比';};
@@ -286,12 +308,13 @@ function updatePlacement(){
  const changed=targetParent!==selected().parent,dock=reader.querySelector('.position-dock');
  if(!dock)return;dock.classList.toggle('changed',changed);dock.classList.toggle('searching',searchDestination);
  $('destination-text').parentElement.innerHTML=(changed?'即将移至 ':'当前位置：')+`<strong id="destination-text">${esc(path(targetParent))}</strong>`;
- $('confirm-move').textContent='确认移动';$('cancel-move').textContent='复位';$('cancel-move').disabled=!changed&&!searchDestination;
- $('cancel-move').onclick=()=>{targetParent=selected().parent;searchDestination=false;render();};
+ $('confirm-move').textContent='确认移动';$('cancel-move').textContent='取消';$('cancel-move').disabled=false;
+ $('cancel-move').onclick=()=>closeMoveSheet();
 }
 const workbenchRender=render;
 render=function(){
  const treeTop=$('workspace').scrollTop,docTop=reader.querySelector('.read-document')?.scrollTop||0,same=lastRenderedSelection===state.selected;
+ if(moveSheetId&&moveSheetId!==state.selected)moveSheetId=null;
  workbenchRender();document.body.dataset.mobilePane=mobilePane;
  switcher.hidden=variant==='A'&&!compareOpen;
  if(variant==='A'){
@@ -300,12 +323,17 @@ render=function(){
  $('new-article').title='新建于：'+path(creationParent());
  $('summary').innerHTML=`${articles().filter(matches).length} 篇文章 · ${state.nodes.filter(n=>n.type==='folder').length} 个目录<div class="tree-hint">单击阅读 · 拖动移动 · 右键更多操作</div>`;
  $('workspace').querySelectorAll('[data-select]').forEach(b=>{b.removeAttribute('aria-expanded');if(b.dataset.select===state.selected)b.setAttribute('aria-current','true');b.title=name(node(b.dataset.select));});
- const dock=reader.querySelector('.position-dock');if(dock){dock.querySelector('.dock-title').innerHTML=`<span>${selected().type==='folder'?'文件夹位置':'文章位置'} <small>· 已有网址保持不变</small></span><button id="dock-search">${searchDestination?'逐级选择':'搜索目录'}</button>`;$('dock-search').onclick=()=>{searchDestination=!searchDestination;render();$('destination-search')?.focus();};updatePlacement();}
+ const dock=reader.querySelector('.position-dock');if(dock){
+ const open=moveSheetId===state.selected;dock.hidden=!open;dock.setAttribute('role','dialog');dock.setAttribute('aria-modal','false');dock.setAttribute('aria-labelledby','move-sheet-title');
+ dock.querySelector('.dock-title').innerHTML=`<div class="sheet-heading"><strong id="move-sheet-title">移动${selected().type==='folder'?'文件夹':''}「${esc(name(selected()))}」</strong><small>${selected().type==='folder'?'子目录和文章一起移动 · ':''}已有网址保持不变</small></div><div class="sheet-actions"><button id="dock-search">${searchDestination?'逐级选择':'搜索目录'}</button><button class="icon" id="close-move-sheet" aria-label="关闭移动面板">×</button></div>`;
+ $('close-move-sheet').onclick=()=>closeMoveSheet();$('dock-search').onclick=()=>{searchDestination=!searchDestination;render();$('destination-search')?.focus();};updatePlacement();
+ if(open&&animateMoveSheet){dock.classList.add('sheet-enter');animateMoveSheet=false;dock.querySelector('[data-picker],#destination-search,#close-move-sheet')?.focus({preventScroll:true});}
+ }
  }
  lastRenderedSelection=state.selected;
 };
 const workbenchSelect=select;
-select=function(id){mobilePane='reader';workbenchSelect(id);};
+select=function(id){if(state.selected!==id)moveSheetId=null;mobilePane='reader';workbenchSelect(id);};
 const sharedReaderClick=reader.onclick;
 reader.onclick=e=>{const b=e.target.closest('button');if(!b)return;if(b.hasAttribute('data-back-tree')){mobilePane='tree';render();return;}if(b.hasAttribute('data-select-root')){state.selected=null;mobilePane='tree';render();return;}if(b.dataset.createArticle){newItem('article',b.dataset.createArticle);return;}sharedReaderClick(e);};
 $('workspace').addEventListener('contextmenu',e=>{const r=e.target.closest('.row');if(!r||variant!=='A')return;e.preventDefault();select(r.dataset.id);menu($('workspace').querySelector(`[data-more="${r.dataset.id}"]`),r.dataset.id);});
@@ -319,6 +347,32 @@ $('workspace').addEventListener('keydown',e=>{
 document.addEventListener('keydown',e=>{if(variant==='A'&&(e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&!e.target.closest('input,textarea,[contenteditable],dialog')){e.preventDefault();act({type:'undo'});}});
 // Keep drag targets reachable in long directory lists and communicate the destination.
 document.addEventListener('pointermove',e=>{if(variant!=='A'||!dragged)return;const box=$('workspace').getBoundingClientRect();if(e.clientX>=box.left&&e.clientX<=box.right){if(e.clientY<box.top+40)$('workspace').scrollTop-=14;else if(e.clientY>box.bottom-40)$('workspace').scrollTop+=14;}const target=dropTarget(e);$('drag-ghost').textContent=name(node(dragged))+(target?' → '+path(target.dataset.drop||null):' · 拖到目标文件夹');});
+
+
+// The reading workbench reveals placement only after an explicit Move action.
+function closeMoveSheet(){
+ const dock=reader.querySelector('.position-dock');if(!moveSheetId||!dock||dock.hidden)return;
+ const closingId=moveSheetId;dock.classList.remove('sheet-enter');dock.classList.add('sheet-leave');dock.inert=true;
+ const finish=()=>{if(moveSheetId!==closingId||!dock.isConnected)return;moveSheetId=null;targetParent=selected()?.parent||null;searchDestination=false;render();reader.querySelector('.read-actions [data-more]')?.focus({preventScroll:true});};
+ setTimeout(finish,matchMedia('(prefers-reduced-motion: reduce)').matches?0:180);
+}
+const workbenchMenuClick=$('menu').onclick;
+$('menu').onclick=e=>{
+ const b=e.target.closest('[data-command]');
+ if(variant!=='A'||b?.dataset.command!=='move')return workbenchMenuClick(e);
+ const n=node($('menu').dataset.node);if(!n)return;
+ state.selected=n.id;targetParent=n.parent;searchDestination=false;moveOpen=true;moveSheetId=n.id;animateMoveSheet=true;mobilePane='reader';closeMenu();render();
+};
+const workbenchAct=act;
+act=function(a){
+ const previousSheet=moveSheetId;
+ if(variant==='A')moveSheetId=null;
+ const ok=workbenchAct(a);
+ if(!ok&&previousSheet){moveSheetId=previousSheet;render();}
+ else if(ok&&previousSheet&&variant==='A')reader.querySelector('.read-actions [data-more]')?.focus({preventScroll:true});
+ return ok;
+};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&variant==='A'&&moveSheetId&&!$('dialog').open){e.preventDefault();closeMoveSheet();}});
 
 // Start each comparison with the same selected sample article.
 state.selected='protect';targetParent='writing';moveOpen=true;
