@@ -1,19 +1,24 @@
 ---
-title: "大模型系统学习笔记：从 Transformer 到应用落地"
-published: 2026-05-02
-
-description: "系统梳理大模型从 Transformer 基础、预训练、微调、推理优化到应用落地的核心知识点。"
-image: ""
-tags: ["大模型", "Transformer", "LLM", "算法"]
-category: "大模型算法/Transformer/大模型基础"
+title: 大模型系统学习笔记：从 Transformer 到应用落地
+published: 2026-05-02T00:00:00.000Z
+description: 系统梳理大模型从 Transformer 基础、预训练、微调、推理优化到应用落地的核心知识点。
+image: ''
+tags:
+  - 大模型
+  - Transformer
+  - LLM
+  - 算法
+category: llm-algorithms/transformer
 draft: false
-lang: ""
+lang: ''
 pinned: false
-author: ""
-sourceLink: ""
-licenseName: ""
-licenseUrl: ""
+author: ''
+sourceLink: ''
+licenseName: ''
+licenseUrl: ''
 comment: true
+articleId: 'legacy:llm-algorithms/transformer/llm-system-overview.md'
+slug: llm-algorithms/transformer/llm-system-overview
 ---
 
 # 大模型系统学习笔记：从 Transformer 到应用落地

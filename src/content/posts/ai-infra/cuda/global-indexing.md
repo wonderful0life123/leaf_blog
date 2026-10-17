@@ -1,13 +1,19 @@
 ---
 title: CUDA 全局位置计算
-published: 2026-05-25
-updated: 2026-05-25
+published: 2026-05-25T00:00:00.000Z
+updated: 2026-05-25T00:00:00.000Z
 description: 梳理 CUDA 线程索引、block/grid 维度、一维二维三维坐标到线性地址的转换，以及 kernel 启动配置。
-tags: [CUDA, GPU, "AI infra"]
-category: AI infra/cuda
+tags:
+  - CUDA
+  - GPU
+  - AI infra
+category: ai-infra/cuda
 draft: false
-sourceLink: https://github.com/wonderful0life123/obsidian_note/blob/main/AI%20Infra/cuda/%E5%85%A8%E5%B1%80%E4%BD%8D%E7%BD%AE%E8%AE%A1%E7%AE%97.md
+sourceLink: >-
+  https://github.com/wonderful0life123/obsidian_note/blob/main/AI%20Infra/cuda/%E5%85%A8%E5%B1%80%E4%BD%8D%E7%BD%AE%E8%AE%A1%E7%AE%97.md
 comment: true
+articleId: 'legacy:ai-infra/cuda/global-indexing.md'
+slug: ai-infra/cuda/global-indexing
 ---
 
 # CUDA 全局位置计算

@@ -1,0 +1,63 @@
+{
+  "format": 1,
+  "articles": [
+    {
+      "id": "legacy:firefly.md",
+      "path": "firefly.md",
+      "route": "firefly",
+      "aliases": [],
+      "guidRoute": "firefly"
+    },
+    {
+      "id": "legacy:hello-wonder.md",
+      "path": "hello-wonder.md",
+      "route": "hello-wonder",
+      "aliases": [],
+      "guidRoute": "hello-wonder"
+    },
+    {
+      "id": "legacy:writing/server-codex-setup.md",
+      "path": "writing/server-codex-setup.md",
+      "route": "writing/server-codex-setup",
+      "aliases": [],
+      "guidRoute": "writing/server-codex-setup"
+    },
+    {
+      "id": "legacy:ai-infra/cuda/element-wise.md",
+      "path": "ai-infra/cuda/element-wise.md",
+      "route": "ai-infra/cuda/element-wise",
+      "aliases": [],
+      "guidRoute": "ai-infra/cuda/element-wise"
+    },
+    {
+      "id": "legacy:ai-infra/cuda/global-indexing.md",
+      "path": "ai-infra/cuda/global-indexing.md",
+      "route": "ai-infra/cuda/global-indexing",
+      "aliases": [],
+      "guidRoute": "ai-infra/cuda/global-indexing"
+    },
+    {
+      "id": "legacy:ai-infra/cuda/references.md",
+      "path": "ai-infra/telilang/references.md",
+      "route": "ai-infra/telilang/references",
+      "aliases": [
+        "ai-infra/cuda/references"
+      ],
+      "guidRoute": "ai-infra/cuda/references"
+    },
+    {
+      "id": "legacy:ai-infra/telilang/tilelang-ascend.md",
+      "path": "ai-infra/telilang/tilelang-ascend.md",
+      "route": "ai-infra/telilang/tilelang-ascend",
+      "aliases": [],
+      "guidRoute": "ai-infra/telilang/tilelang-ascend"
+    },
+    {
+      "id": "legacy:llm-algorithms/transformer/llm-system-overview.md",
+      "path": "llm-algorithms/transformer/llm-system-overview.md",
+      "route": "llm-algorithms/transformer/llm-system-overview",
+      "aliases": [],
+      "guidRoute": "llm-algorithms/transformer/llm-system-overview"
+    }
+  ]
+}

@@ -1,12 +1,18 @@
 ---
 title: TileLang Ascend 编程笔记
-published: 2026-05-15
+published: 2026-05-15T00:00:00.000Z
 description: 整理 TileLang DSL 在 Ascend NPU 场景下的基础语法、kernel 定义、数据类型、launch、循环控制和调度表达方式。
-tags: [TileLang, Ascend, "AI infra"]
-category: AI infra/telilang
+tags:
+  - TileLang
+  - Ascend
+  - AI infra
+category: ai-infra/telilang
 draft: false
-sourceLink: https://github.com/wonderful0life123/obsidian_note/blob/main/%E5%A4%A7%E6%A8%A1%E5%9E%8B%E7%AE%97%E6%B3%95/%E7%A1%AC%E4%BB%B6%E7%9B%B8%E5%85%B3/telilang/TileLang-ascend.md
+sourceLink: >-
+  https://github.com/wonderful0life123/obsidian_note/blob/main/%E5%A4%A7%E6%A8%A1%E5%9E%8B%E7%AE%97%E6%B3%95/%E7%A1%AC%E4%BB%B6%E7%9B%B8%E5%85%B3/telilang/TileLang-ascend.md
 comment: true
+articleId: 'legacy:ai-infra/telilang/tilelang-ascend.md'
+slug: ai-infra/telilang/tilelang-ascend
 ---
 
 # TileLang Ascend 编程笔记

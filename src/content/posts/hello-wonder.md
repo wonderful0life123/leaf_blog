@@ -1,11 +1,16 @@
 ---
 title: 欢迎来到 wonder
-published: 2026-05-01
+published: 2026-05-01T00:00:00.000Z
 pinned: true
 description: 这里会记录技术学习、生活片段、音乐和日常思考。
-tags: [博客, 生活, 技术]
-category: 日常
+tags:
+  - 博客
+  - 生活
+  - 技术
+category: ''
 draft: false
+articleId: 'legacy:hello-wonder.md'
+slug: hello-wonder
 ---
 
 这里是 **wonder** 的个人博客。

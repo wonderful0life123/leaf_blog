@@ -1,10 +1,12 @@
 ---
 title: 服务器加载codex
-category: ''
+category: writing
 tags: []
 description: ''
 published: 2026-10-14T00:00:00.000Z
 draft: false
+articleId: 'legacy:writing/server-codex-setup.md'
+slug: writing/server-codex-setup
 ---
 **找到了，Codex 还在。当前的问题是终端没有加载它所在的 nvm 环境。**
 

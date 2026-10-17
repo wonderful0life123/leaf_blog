@@ -1,13 +1,19 @@
 ---
 title: CUDA Element-wise 算子
-published: 2026-05-25
-updated: 2026-05-25
+published: 2026-05-25T00:00:00.000Z
+updated: 2026-05-25T00:00:00.000Z
 description: 整理 CUDA 逐元素算子的基础写法、显存带宽瓶颈、网格跨步循环以及向量化加载与存储。
-tags: [CUDA, GPU, "AI infra"]
-category: AI infra/cuda
+tags:
+  - CUDA
+  - GPU
+  - AI infra
+category: ai-infra/cuda
 draft: false
-sourceLink: https://github.com/wonderful0life123/obsidian_note/blob/main/AI%20Infra/cuda/element%20wise%E7%AE%97%E5%AD%90.md
+sourceLink: >-
+  https://github.com/wonderful0life123/obsidian_note/blob/main/AI%20Infra/cuda/element%20wise%E7%AE%97%E5%AD%90.md
 comment: true
+articleId: 'legacy:ai-infra/cuda/element-wise.md'
+slug: ai-infra/cuda/element-wise
 ---
 
 # CUDA Element-wise 算子

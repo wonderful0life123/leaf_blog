@@ -1,13 +1,19 @@
 ---
 title: CUDA 参考资料
-published: 2026-05-25
-updated: 2026-05-25
+published: 2026-05-25T00:00:00.000Z
+updated: 2026-05-25T00:00:00.000Z
 description: 记录 CUDA 学习过程中参考的项目和资料链接。
-tags: [CUDA, GPU, "AI infra"]
-category: AI infra/cuda
+tags:
+  - CUDA
+  - GPU
+  - AI infra
+category: ai-infra/telilang
 draft: false
-sourceLink: https://github.com/wonderful0life123/obsidian_note/blob/main/AI%20Infra/cuda/%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99.md
+sourceLink: >-
+  https://github.com/wonderful0life123/obsidian_note/blob/main/AI%20Infra/cuda/%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99.md
 comment: true
+articleId: 'legacy:ai-infra/cuda/references.md'
+slug: ai-infra/telilang/references
 ---
 
 # CUDA 参考资料
