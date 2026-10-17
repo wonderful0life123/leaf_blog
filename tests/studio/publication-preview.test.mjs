@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {execFileSync} from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -16,8 +17,14 @@ test('真实单篇渲染首次与正文修改都在 10 秒内完成，复用博�
  const store=openStore({dataDir});t.after(()=>{store.close();fs.rmSync(root,{recursive:true,force:true});});
  const image=store.upload(png);
  let draft=store.create({title:'<安全的标题>',body:'## 快速预览\n\n```python title="hello.py"\nprint("hello")\n```\n\n$E=mc^2$\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n![pixel]('+image.url+')\n\n> [!NOTE]\n> 提示内容\n',category:'技术',tags:'测试'});
- const driver=gitPublisher({repoDir:repo,enabled:false});driver.build=()=>{throw Error('单篇预览禁止调用全站构建');};
- const manager=openPublications({dataDir,store,config:{repoDir:repo,enabled:false},adapter:driver});
+ const fixtureRepo=path.join(root,'repo');fs.mkdirSync(path.join(fixtureRepo,'src/content'),{recursive:true});
+ fs.cpSync(path.join(repo,'src/content/posts'),path.join(fixtureRepo,'src/content/posts'),{recursive:true});
+ fs.copyFileSync(path.join(repo,'pnpm-lock.yaml'),path.join(fixtureRepo,'pnpm-lock.yaml'));
+ const git=args=>execFileSync('git',args,{cwd:fixtureRepo,stdio:'pipe'});
+ git(['init']);git(['add','.']);git(['-c','user.name=Preview test','-c','user.email=test@example.invalid','commit','-m','Isolated preview fixture']);
+ fs.symlinkSync(path.join(repo,'node_modules'),path.join(fixtureRepo,'node_modules'),'dir');fs.symlinkSync(path.join(repo,'.studio-preview'),path.join(fixtureRepo,'.studio-preview'),'dir');
+ const driver=gitPublisher({repoDir:fixtureRepo,enabled:false});driver.build=()=>{throw Error('单篇预览禁止调用全站构建');};
+ const manager=openPublications({dataDir,store,config:{repoDir:fixtureRepo,enabled:false},adapter:driver});
  const timings=[];
  for(let i=0;i<3;i++){
   if(i===1)draft=store.update(draft.id,{...draft,body:draft.body+'\n正文修改后的内容\n'});
@@ -25,7 +32,7 @@ test('真实单篇渲染首次与正文修改都在 10 秒内完成，复用博�
   assert.equal(job.state,'ready',job.error);assert.equal(job.previewOnly,true);assert.equal(job.reused,i===2);
   timings.push(Math.round(performance.now()-started));
   assert.ok(timings.at(-1)<10000);assert.ok(!fs.existsSync(path.join(dataDir,'publications',job.id,'work/dist')));
-  const html=manager.preview(job.id,'posts/writing/fast/').bytes.toString(),doc=parse(html);
+  const html=manager.preview(job.id,'posts/fast/').bytes.toString(),doc=parse(html);
   assert.ok(html.includes('expressive-code'));assert.ok(html.includes('katex'));assert.ok(doc.querySelector('table'));assert.ok(html.includes('提示内容'));
   assert.equal(doc.querySelector('h1').textContent,'<安全的标题>');assert.ok(!doc.querySelector('script'));assert.ok(!html.includes('__ASTRO_IMAGE_'));assert.ok(!html.includes('/studio-api/media/'));
   if(i>0)assert.ok(html.includes('正文修改后的内容'));

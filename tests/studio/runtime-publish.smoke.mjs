@@ -209,7 +209,10 @@ async function runPipeline() {
 		"base64",
 	);
 	const media = store.upload(imageBytes);
-	let draft = store.create({
+	let location=store.editFolderOrganization({revision:store.organization([]).revision,action:'create',name:'writing',parent:null},[]);
+  const writing=location.folders.find(f=>f.name==='writing').id;
+  let draft = store.create({
+    organization:{revision:location.revision,target:writing},
 		title: "快速发布 FIRST",
 		body:
 			'## Pipeline verification\n\nquasarfirst\n\n```python\nprint("wonder")\n```\n\n$E=mc^2$\n\n![pipeline image](' +
@@ -309,7 +312,7 @@ async function runPipeline() {
 		assert.ok(
 			git(["diff-tree", "--no-commit-id", "--name-only", "-r", job.commit])
 				.split("\n")
-				.every((file) => file.startsWith("src/content/posts/writing/")),
+				.every((file) => file.startsWith("src/content/posts/writing/")||["src/data/article-routes.json","src/data/public-archive.json"].includes(file)),
 		);
 		const snapshot = fs.readFileSync(
 			path.join(live(), "published.json"),
@@ -500,6 +503,124 @@ async function runPipeline() {
 		assert.equal(head(), externalCommit);
 		assert.equal(live(), oldLive);
 		checks.push("real concurrent remote commit rejects stale preview");
+
+        const publicItems=manager.decorate(store.list());
+        let organization=store.organization(publicItems);
+        organization=store.editFolderOrganization({action:'create',parent:null,name:'公开整理验收',revision:organization.revision},publicItems);
+        const folder=organization.folders.find(f=>f.name==='公开整理验收');
+        organization=store.moveOrganization({kind:'article',id:'draft:'+draft.id,target:folder.id,revision:organization.revision},publicItems);
+        const preparedDirectory=await request('/organization/publication',{revision:organization.revision});
+        const directoryReady=await wait(preparedDirectory.id);
+        assert.equal(directoryReady.state,'ready',JSON.stringify(directoryReady));
+        assert.ok(!JSON.stringify(directoryReady.archiveRows).includes('PRIVATE UNSHARED DRAFT'));
+        const previousBody=(await publicRead('/posts/writing/runtime-pipeline/')).text;
+        const previousCommit=head(),directoryStart=performance.now();
+        await confirm(directoryReady);
+        const directoryDone=await wait(directoryReady.id);
+        assert.equal(directoryDone.state,'published',JSON.stringify(directoryDone));
+        const changed=git(['diff','--no-renames','--name-only','-z',previousCommit,directoryDone.commit]).split('\0');assert.ok(changed.includes('src/content/posts/writing/runtime-pipeline.md'));assert.ok(changed.includes('src/content/posts/公开整理验收/runtime-pipeline.md'));assert.ok(!git(['ls-tree','-r','--name-only',directoryDone.commit]).includes('src/content/posts/writing/runtime-pipeline.md'));
+        const redirected=await fetch(origin+'/posts/writing/runtime-pipeline/?test=1',{redirect:'manual'});assert.equal(redirected.status,302);assert.match(redirected.headers.get('cache-control'),/no-store/);assert.equal(decodeURI(redirected.headers.get('location')),'/posts/公开整理验收/runtime-pipeline/?test=1');
+        const archiveSnapshot=JSON.parse(fs.readFileSync(path.join(live(),'published.json'),'utf8'));
+        const archived=archiveSnapshot.entries.find(e=>e.id==='公开整理验收/runtime-pipeline');
+        assert.equal(archived.data.archivePath,'公开整理验收');
+        assert.equal(archived.data.category,'公开整理验收');
+        assert.ok(!archived.data.runtimeBody.includes('notyetpublished'));
+        assert.ok((await publicRead('/archive/')).text.includes('公开整理验收'));
+        const afterBody=(await publicRead('/posts/'+encodeURIComponent('公开整理验收')+'/runtime-pipeline/')).text;
+        assert.ok(afterBody.includes('activationtoken'));assert.ok(!afterBody.includes('concurrentedit'));
+        const movedImage=await fetch(origin+parse(afterBody).querySelector('img[alt="pipeline image"]').getAttribute('src'));assert.deepEqual(Buffer.from(await movedImage.arrayBuffer()),imageBytes);
+        await verifyExistingCudaImages();
+        assert.equal(await driver.head(),directoryDone.commit,'manifest changes must be allowed by deployed code baseline');
+        assert.ok(!directoryDone.timings.some(t=>['icons','site'].includes(t.stage)));
+        timings.push({scenario:'directory publication',confirmToPublishedMs:Math.round(performance.now()-directoryStart),timings:directoryDone.timings,commit:directoryDone.commit});
+        checks.push('real directory move, old URL redirects, draft body excluded and image bytes preserved');
+        draft=store.get(draft.id);
+        let currentOrg=store.organization(manager.decorate(store.list()));
+        currentOrg=store.moveOrganization({revision:currentOrg.revision,kind:'article',id:'draft:'+draft.id,target:writing},manager.decorate(store.list()));
+        const moveBack=await prepare();await confirm(moveBack);const movedBack=await wait(moveBack.id);assert.equal(movedBack.state,'published',JSON.stringify(movedBack));
+        const oldChinese=await fetch(origin+'/posts/'+encodeURIComponent('公开整理验收')+'/runtime-pipeline/',{redirect:'manual'});assert.equal(oldChinese.status,302);assert.equal(oldChinese.headers.get('location'),'/posts/writing/runtime-pipeline/');
+        assert.ok((await publicRead('/posts/writing/runtime-pipeline/')).text.includes('concurrentedit'));
+        checks.push('single publication includes own body and desired move; reversible aliases do not loop');
+
+        // A published Chinese filename and a private sibling travel with their folder.
+        // Only the public version is included when applying the directory change.
+        const allItems = () => manager.decorate(store.list());
+        const newFolder = (name, parent) => {
+            const state = store.organization(allItems());
+            const next = store.editFolderOrganization({revision:state.revision, action:'create', name, parent}, allItems());
+            return next.folders.find(f => f.name === name && f.parent === parent).id;
+        };
+        const chineseParent = newFolder('中文验收', null);
+        const chineseChild = newFolder('嵌套目录', chineseParent);
+        let chinese = store.create({title:'标题可以不同于文件名', body:'chinesepublicbody\n\n![pipeline image]('+media.url+')', category:'', tags:'', organization:{revision:store.organization(allItems()).revision, target:chineseChild}}, allItems());
+        const privateSibling = store.create({title:'PRIVATE FOLDER SIBLING', body:'folderprivatesecret', category:'', tags:'', organization:{revision:store.organization(allItems()).revision, target:chineseChild}}, allItems());
+        async function publishChinese() {
+            chinese = store.get(chinese.id);
+            const job = await request('/drafts/'+chinese.id+'/publication', {revision:chinese.revision, filename:'第一篇中文文章.md', published:'2026-10-17', description:'目录联动验收'});
+            const ready = await wait(job.id);
+            assert.equal(ready.state,'ready',JSON.stringify(ready));
+            await confirm(ready);
+            const done = await wait(job.id);
+            assert.equal(done.state,'published',JSON.stringify(done));
+            assert.equal(head(),done.commit);
+            return done;
+        }
+        await publishChinese();
+        const originalChinesePath = '中文验收/嵌套目录/第一篇中文文章.md';
+        const finalChinesePath = '公开整理验收/'+originalChinesePath;
+        const articleUrl = file => '/posts/'+file.slice(0,-3).split('/').map(encodeURIComponent).join('/')+'/';
+        const unchangedHead = head(), unchangedLive = live();
+        chinese = store.get(chinese.id);
+        chinese = store.update(chinese.id, {...chinese, body:chinese.body+'\nnewprivatebody'});
+        const privateBody = chinese.body;
+        let folderState = store.organization(allItems());
+        const moveParent = () => store.moveOrganization({revision:folderState.revision, kind:'folder', id:chineseParent, target:folder.id}, allItems());
+        folderState = moveParent();
+        assert.equal(manager.info(chinese.id).path,finalChinesePath);
+        folderState = store.undoOrganization({revision:folderState.revision, token:folderState.undoToken}, allItems());
+        assert.equal(manager.info(chinese.id).path,originalChinesePath);
+        folderState = moveParent();
+        assert.equal(head(),unchangedHead,'workbench move and undo must not commit');
+        assert.equal(live(),unchangedLive,'workbench move and undo must not activate');
+        const folderJob = await request('/organization/publication',{revision:folderState.revision});
+        const folderReady = await wait(folderJob.id);
+        assert.equal(folderReady.state,'ready',JSON.stringify(folderReady));
+        assert.ok(!JSON.stringify(folderReady.archiveRows).includes(privateSibling.title));
+        await confirm(folderReady);
+        const folderDone = await wait(folderJob.id);
+        assert.equal(folderDone.state,'published',JSON.stringify(folderDone));
+        assert.equal(head(),folderDone.commit);
+        const tracked = git(['ls-tree','-r','--name-only','-z',folderDone.commit]).split('\0');
+        assert.ok(tracked.includes('src/content/posts/'+finalChinesePath));
+        assert.ok(!tracked.includes('src/content/posts/'+originalChinesePath));
+        const movedChinese = await publicRead(articleUrl(finalChinesePath));
+        assert.ok(movedChinese.text.includes(chinese.title));
+        assert.ok(movedChinese.text.includes('chinesepublicbody'));
+        assert.ok(!movedChinese.text.includes('newprivatebody'));
+        const redirectChinese = await fetch(origin+articleUrl(originalChinesePath),{redirect:'manual'});
+        assert.equal(redirectChinese.status,302);
+        assert.equal(redirectChinese.headers.get('location'),articleUrl(finalChinesePath));
+        assert.match(redirectChinese.headers.get('cache-control'),/no-store/);
+        const folderSnapshot = JSON.parse(fs.readFileSync(path.join(live(),'published.json'),'utf8'));
+        const chineseEntry = folderSnapshot.entries.find(e=>e.id === finalChinesePath.slice(0,-3));
+        assert.equal(chineseEntry.data.category,'公开整理验收/中文验收/嵌套目录');
+        assert.ok(!JSON.stringify(folderSnapshot).includes('folderprivatesecret'));
+        assert.equal(store.get(chinese.id).body,privateBody,'directory apply must preserve private edits');
+        assert.equal(store.get(privateSibling.id).body,privateSibling.body);
+        const chineseImage = await fetch(origin+parse(movedChinese.text).querySelector('img[alt="pipeline image"]').getAttribute('src'));
+        assert.equal(chineseImage.status,200);
+        assert.deepEqual(Buffer.from(await chineseImage.arrayBuffer()),imageBytes);
+        const bodyUpdate = await publishChinese();
+        assert.equal(bodyUpdate.path,finalChinesePath,'body-only update stays in the current folder');
+        assert.ok((await publicRead(articleUrl(finalChinesePath))).text.includes('newprivatebody'));
+        const bodyDiff = git(['diff','--name-only','-z',folderDone.commit,bodyUpdate.commit]).split('\0').filter(Boolean);
+        assert.ok(bodyDiff.includes('src/content/posts/'+finalChinesePath));
+        const ownAssets = 'src/content/posts/'+path.posix.dirname(finalChinesePath)+'/assets/第一篇中文文章/';
+        assert.ok(bodyDiff.every(file=>!file.startsWith('src/content/posts/') || file === 'src/content/posts/'+finalChinesePath || file.startsWith(ownAssets)));
+        for (const file of bodyDiff.filter(file=>file.startsWith(ownAssets))) {
+            assert.deepEqual(execFileSync('git',['show',bodyUpdate.commit+':'+file],{cwd:remote}),imageBytes,'relocated own attachment must retain its bytes');
+        }
+        checks.push('Chinese filename differs from title; nested folder move and undo stay private until applied; public path/category/image/redirect agree; private sibling and body edits excluded; subsequent body-only update keeps new folder');
 		assert.equal(fingerprint(), builtHash);
 		assert.equal(git(["status", "--porcelain"]), "");
 		const report = {

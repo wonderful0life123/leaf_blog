@@ -18,6 +18,7 @@ interface Post {
 		title: string;
 		tags: string[];
 		category?: string | null;
+		archivePath?: string;
 		published: Date;
 	};
 }
@@ -53,6 +54,13 @@ const params = new URLSearchParams(window.location.search);
 tags = params.has("tag") ? params.getAll("tag") : [];
 categories = params.has("category") ? params.getAll("category") : [];
 const uncategorized = params.get("uncategorized");
+const directory = params.get("directory");
+const directoryMode = categories.length === 0 && !uncategorized;
+const archivePath = (post: Post) =>
+	directoryMode
+		? (post.data.archivePath ?? post.data.category)
+		: post.data.category;
+let rootPosts: Post[] = $state([]);
 
 let groups: Group[] = $state([]);
 let categoryTree: ArchiveTreeNode[] = $state([]);
@@ -118,7 +126,7 @@ function buildArchiveCategoryTree(posts: Post[]): ArchiveTreeNode[] {
 	const nodeMap = new Map<string, ArchiveTreeNode>();
 
 	for (const post of posts) {
-		const segments = getCategorySegments(post.data.category);
+		const segments = getCategorySegments(archivePath(post));
 		if (segments.length === 0) continue;
 
 		for (let i = 0; i < segments.length; i++) {
@@ -169,7 +177,10 @@ function getVisibleArchiveRoots(
 		normalizeCategoryPath(category),
 	);
 
-	const findNode = (nodes: ArchiveTreeNode[], path: string): ArchiveTreeNode | null => {
+	const findNode = (
+		nodes: ArchiveTreeNode[],
+		path: string,
+	): ArchiveTreeNode | null => {
 		for (const node of nodes) {
 			if (node.name === path) return node;
 			const child = findNode(node.children, path);
@@ -286,15 +297,25 @@ onMount(async () => {
 		filteredPosts = filteredPosts.filter((post) => !post.data.category);
 	}
 
+	if (directory && directoryMode)
+		filteredPosts = filteredPosts.filter((post) =>
+			categoryMatchesFilter(archivePath(post), directory),
+		);
+	rootPosts = sortPostsByDate(
+		filteredPosts.filter((post) => !archivePath(post)),
+	);
 	// 按发布时间倒序排序，确保不受置顶影响
 	filteredPosts = sortPostsByDate(filteredPosts);
 
 	filteredPostCount = filteredPosts.length;
 	categoryTree = getVisibleArchiveRoots(
 		buildArchiveCategoryTree(filteredPosts),
-		categories,
+		directory ? [directory] : categories,
 	);
-	expandedArchivePaths = getDefaultExpandedArchivePaths(categoryTree, categories);
+	expandedArchivePaths = getDefaultExpandedArchivePaths(
+		categoryTree,
+		directory ? [directory] : categories,
+	);
 
 	const grouped = filteredPosts.reduce(
 		(acc, post) => {
@@ -375,7 +396,7 @@ onMount(async () => {
 			{:else}
 				<div class="archive-category-branch" aria-hidden="true"></div>
 			{/if}
-			<a class="archive-category-link" href={`/archive/?category=${encodeURIComponent(node.name)}`}>
+			<a class="archive-category-link" href={`/archive/?${directoryMode?"directory":"category"}=${encodeURIComponent(node.name)}`}>
 				<span class="archive-category-title">{node.leafName}</span>
 				<span class="archive-category-count">{node.totalPosts}</span>
 			</a>
@@ -422,6 +443,7 @@ onMount(async () => {
 
 	{#if categoryTree.length > 0}
 		<div class="archive-category-tree">
+            {#if rootPosts.length}<section aria-label="根目录文章">{#each rootPosts as post}{@render PostLink(post)}{/each}</section>{/if}
 			{#each categoryTree as node}
 				{@render CategoryNode(node)}
 			{/each}

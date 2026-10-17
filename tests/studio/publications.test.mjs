@@ -31,7 +31,7 @@ test('发布内容保留元信息与普通引用链接，只转换真实图片�
 });
 test('发布拒绝路径穿越、覆盖冲突、空文章、原始 HTML、无效日期与丢失图片',t=>{
  const {draft,store}=fixture(t);const convert=(d=draft,i=input,opts={})=>publicationContent(d,i,{media:id=>store.media(id),...opts});
- for(const target of ['../bad.md','a/../../bad.md','/tmp/x.md','A.md','a.mdx'])assert.throws(()=>convert(draft,{...input,path:target}),/路径/);
+ for(const target of ['../bad.md','a/../../bad.md','/tmp/x.md','a?.md','a.mdx'])assert.throws(()=>convert(draft,{...input,path:target}),/路径/);
  assert.throws(()=>convert(draft,input,{previous:'existing'}),/占用/);assert.throws(()=>convert({...draft,title:' '}),/标题/);
  assert.throws(()=>convert({...draft,body:'<img src="file:///etc/passwd">'}),/HTML/);assert.throws(()=>convert(draft,{...input,published:'2026-02-31'}),/日期/);assert.throws(()=>convert({...draft,body:'![](missing.png)'}),/图片/);
 });
@@ -39,7 +39,7 @@ test('构建预览保持私密，确认才推送；重复确认不重复发布�
  const {root,store,draft}=fixture(t),driver=mockDriver(root),manager=openPublications({dataDir:path.join(root,'data'),store,config:{enabled:true},adapter:driver});
  const started=manager.prepare(draft.id,{...input,revision:1});assert.equal(started.state,'building');assert.deepEqual(driver.counts(),{pushes:0,deploys:0});
  const ready=await settled(manager,started.id);assert.equal(ready.state,'ready');assert.throws(()=>manager.preview(ready.id,'../../job.json'),/不存在/);
- const html=manager.preview(ready.id,'posts/writing/test/').bytes.toString();assert.ok(!html.includes('SECRET_SCRIPT'));assert.ok(!html.includes('onerror'));assert.ok(html.includes(`/publications/${ready.id}/preview/_astro/image.png`));
+ const html=manager.preview(ready.id,'posts/test/').bytes.toString();assert.ok(!html.includes('SECRET_SCRIPT'));assert.ok(!html.includes('onerror'));assert.ok(html.includes(`/publications/${ready.id}/preview/_astro/image.png`));
  assert.throws(()=>manager.confirm(ready.id,{revision:1}),/确认/);
  manager.confirm(ready.id,{revision:1,confirm:true});assert.equal((await settled(manager,ready.id)).state,'published');manager.confirm(ready.id,{revision:1,confirm:true});assert.deepEqual(driver.counts(),{pushes:1,deploys:1});
 });
@@ -67,7 +67,7 @@ test('相同文章复用完整构建，但仍核对源版本；草稿或远端�
  const first=manager.prepare(draft.id,request);await settled(manager,first.id);
  const second=manager.prepare(draft.id,request),reused=await settled(manager,second.id);
  assert.equal(reused.state,'ready');assert.equal(builds,1);assert.equal(reused.reused,true);
- assert.ok(manager.preview(second.id,'posts/writing/test/').bytes.toString().includes('article'));
+ assert.ok(manager.preview(second.id,'posts/test/').bytes.toString().includes('article'));
  assert.ok(reused.timings.some(t=>t.stage==='reuse'&&t.durationMs>=0));
  driver.changeHead();await settled(manager,manager.prepare(draft.id,request).id);assert.equal(builds,2);
  store.update(draft.id,{...draft,body:'changed',revision:1});
@@ -127,7 +127,7 @@ test('确认后的完整构建失败、草稿变化或远端变化均不得提�
   };
   manager.confirm(job.id,{revision:1,confirm:true});const failed=await settled(manager,job.id);
   assert.equal(failed.state,'failed');assert.deepEqual(driver.counts(),{pushes:0,deploys:0});
-  assert.ok(manager.preview(job.id,'posts/writing/test/').bytes.toString().includes('article'));
+  assert.ok(manager.preview(job.id,'posts/test/').bytes.toString().includes('article'));
  });
 });
 
@@ -138,4 +138,49 @@ test('切换发布模式后旧预览必须重新生成，不能提交到另一�
  assert.equal(job.state,'ready');config.mode='runtime';
  assert.throws(()=>manager.confirm(job.id,{revision:1,confirm:true}),/发布模式已切换/);
  assert.deepEqual(driver.counts(),{pushes:0,deploys:0});
+});
+
+
+test('重新打开预览保留确认的中文文件名，移动目录后不展示旧任务为可发布',async t=>{
+ const {root,store,draft}=fixture(t),manager=openPublications({dataDir:path.join(root,'data'),store,config:{enabled:false},adapter:mockDriver(root)});
+ const job=manager.prepare(draft.id,{...input,filename:'自选文件名.md',revision:draft.revision});
+ assert.equal((await settled(manager,job.id)).state,'ready');
+ const info=manager.info(draft.id);assert.equal(info.filename,'自选文件名.md');assert.equal(info.path,'自选文件名.md');assert.equal(info.latest.id,job.id);
+ let org=store.organization([draft]);org=store.editFolderOrganization({revision:org.revision,action:'create',parent:null,name:'新目录'},[draft]);
+ store.moveOrganization({revision:org.revision,kind:'article',id:'draft:'+draft.id,target:org.folders[0].id},[draft]);
+ const moved=manager.info(draft.id);assert.equal(moved.filename,'自选文件名.md');assert.equal(moved.path,'新目录/自选文件名.md');assert.equal(moved.latest,null);
+});
+
+
+test('公开版本已切换而绑定确认失败，重启重试只补确认且保留新私人编辑',async t=>{
+ const {root,store,draft}=fixture(t),driver=mockDriver(root),args={dataDir:path.join(root,'data'),store,config:{enabled:true},adapter:driver};
+ let manager=openPublications(args);const job=manager.prepare(draft.id,{...input,revision:1});await settled(manager,job.id);
+ const reconcile=store.reconcilePublication.bind(store);store.reconcilePublication=()=>{throw Error('binding write unavailable');};
+ manager.confirm(job.id,{revision:1,confirm:true});assert.equal((await settled(manager,job.id)).state,'retry');assert.deepEqual(driver.counts(),{pushes:1,deploys:1});
+ const updated=store.update(draft.id,{...draft,body:'切换后继续编辑的私人正文',revision:1});store.reconcilePublication=reconcile;
+ manager=openPublications(args);manager.confirm(job.id,{revision:1,confirm:true});assert.equal((await settled(manager,job.id)).state,'published');assert.deepEqual(driver.counts(),{pushes:1,deploys:1});assert.equal(store.get(draft.id).body,updated.body);assert.equal(store.get(draft.id).revision,updated.revision);assert.equal(store.binding(store.get(draft.id)).path,'test.md');
+});
+
+test('导入后的仓库正文变化会冲突，不能被启动时的新绑定掩盖',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'wonder-source-conflict-')),posts=path.join(root,'repo/src/content/posts');fs.mkdirSync(posts,{recursive:true});
+ const original='---\ntitle: 文章\npublished: 2020-01-01\n---\n原文';fs.writeFileSync(path.join(posts,'文章.md'),original);
+ const store=openStore({dataDir:path.join(root,'data'),sourceRoots:{blog:posts}});t.after(()=>{store.close();fs.rmSync(root,{recursive:true,force:true});});
+ const draft=store.create({title:'文章',body:'私人修改',category:'',tags:'',source:{root:'blog',path:'文章.md'}});
+ fs.writeFileSync(path.join(posts,'文章.md'),original+'\n外部新正文');
+ const driver=mockDriver(root);driver.prepare=async dir=>{const work=path.join(dir,'work');fs.cpSync(path.join(root,'repo'),work,{recursive:true});return work;};
+ const manager=openPublications({dataDir:path.join(root,'data'),store,config:{repoDir:path.join(root,'repo'),enabled:false},adapter:driver});
+ const task=manager.prepare(draft.id,{...input,revision:1});const result=await settled(manager,task.id);
+ assert.equal(result.state,'failed');assert.match(result.error,/变化|冲突|改变/);assert.equal(store.get(draft.id).body,'私人修改');assert.equal(driver.counts().pushes,0);
+});
+
+test('仓库未发布 Markdown 导入仍为草稿，明确预览才准备首次发布',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'wonder-repo-draft-')),posts=path.join(root,'repo/src/content/posts');fs.mkdirSync(posts,{recursive:true});
+ fs.writeFileSync(path.join(posts,'草稿.md'),'---\ntitle: 草稿\ndraft: true\npublished: 2020-01-01\n---\n原文');
+ const store=openStore({dataDir:path.join(root,'data'),sourceRoots:{blog:posts}});t.after(()=>{store.close();fs.rmSync(root,{recursive:true,force:true});});
+ const driver=mockDriver(root);driver.prepare=async dir=>{const work=path.join(dir,'work');fs.cpSync(path.join(root,'repo'),work,{recursive:true});return work;};
+ const manager=openPublications({dataDir:path.join(root,'data'),store,config:{repoDir:path.join(root,'repo'),enabled:false},adapter:driver});
+ const draft=store.create({title:'草稿',body:'准备发布正文',category:'',tags:'',source:{root:'blog',path:'草稿.md'}});
+ assert.equal(store.binding(draft),undefined);assert.equal(manager.decorate([draft])[0].publication,undefined);
+ const task=manager.prepare(draft.id,{...input,filename:'草稿.md',revision:1});const result=await settled(manager,task.id);assert.equal(result.state,'ready',result.error);
+ const text=fs.readFileSync(path.join(root,'data/publications',task.id,'work/src/content/posts/草稿.md'),'utf8');assert.equal(matter(text).data.draft,false);assert.equal(matter(text).data.articleId,'legacy:草稿.md');assert.equal(driver.counts().pushes,0);
 });

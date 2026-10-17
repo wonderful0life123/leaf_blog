@@ -29,7 +29,11 @@ import { siteConfig } from "@/config/siteConfig";
 import { sponsorConfig } from "@/config/sponsorConfig";
 import { formatDateToYYYYMMDD } from "@/utils/date-utils";
 import { getApiUrlList, processCoverImageSync } from "@/utils/image-utils";
-import { createBlogPostingJsonLd, getPageKeywords, getPostOgImageUrl } from "@/utils/seo-utils";
+import {
+	createBlogPostingJsonLd,
+	getPageKeywords,
+	getPostOgImageUrl,
+} from "@/utils/seo-utils";
 import { url } from "@/utils/url-utils";
 
 export async function getStaticPaths() {
@@ -44,11 +48,18 @@ export async function getStaticPaths() {
 	});
 }
 
-const entry = import.meta.env.WONDER_RUNTIME_BUILD ? (await getSortedPosts()).find(p=>p.id===Astro.params.slug) : Astro.props.entry;
-if(!entry)return new Response('Not found',{status:404});
+const entry = import.meta.env.WONDER_RUNTIME_BUILD
+	? (await getSortedPosts()).find(
+			(p) => p.id === decodeURIComponent(Astro.params.slug || ""),
+		)
+	: Astro.props.entry;
+if (!entry) return new Response("Not found", { status: 404 });
 const rendered = await render(entry);
 const { Content } = rendered;
-const {headings,remarkPluginFrontmatter}=import.meta.env.WONDER_RUNTIME_BUILD?entry.data.runtimeRender!:rendered;
+const { headings, remarkPluginFrontmatter } = import.meta.env
+	.WONDER_RUNTIME_BUILD
+	? entry.data.runtimeRender!
+	: rendered;
 
 const bannerPostMeta = {
 	title: entry.data.title,
@@ -76,9 +87,12 @@ if (processedImage) {
 	);
 	if (isLocal) {
 		const basePath = getFileDirFromPath(entry.filePath || "");
-		const files = import.meta.glob<ImageMetadata>("../../**/*.{png,jpg,jpeg,webp,avif,gif,svg,PNG,JPG,JPEG,WEBP,AVIF,GIF,SVG}", {
-			import: "default",
-		});
+		const files = import.meta.glob<ImageMetadata>(
+			"../../**/*.{png,jpg,jpeg,webp,avif,gif,svg,PNG,JPG,JPEG,WEBP,AVIF,GIF,SVG}",
+			{
+				import: "default",
+			},
+		);
 		let normalizedPath = path
 			.normalize(path.join("../../", basePath, processedImage))
 			.replace(/\\/g, "/");
@@ -101,9 +115,12 @@ if (posterAvatarUrl) {
 		posterAvatarUrl.startsWith("data:")
 	);
 	if (isLocalAvatar) {
-		const files = import.meta.glob<ImageMetadata>("../../**/*.{png,jpg,jpeg,webp,avif,gif,svg,PNG,JPG,JPEG,WEBP,AVIF,GIF,SVG}", {
-			import: "default",
-		});
+		const files = import.meta.glob<ImageMetadata>(
+			"../../**/*.{png,jpg,jpeg,webp,avif,gif,svg,PNG,JPG,JPEG,WEBP,AVIF,GIF,SVG}",
+			{
+				import: "default",
+			},
+		);
 		const normalizedPath = path
 			.normalize(path.join("../../", posterAvatarUrl))
 			.replace(/\\/g, "/");

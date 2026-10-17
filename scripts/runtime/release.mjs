@@ -1,4 +1,7 @@
 import fs from "node:fs";
+import {readPublicInventory,rewriteReferences} from "../studio/article-changes.mjs";
+import {articleGuid,postUrl,routeFromPath} from "../../src/lib/article-paths.mjs";
+import {ARCHIVE_FILE,validateArchive,withArchivePath} from "../../src/lib/public-archive.mjs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
@@ -97,6 +100,10 @@ export async function buildRuntimeRelease(
 	// Candidate is task-private. Never remove an active/past immutable release.
 	if (fs.existsSync(output)) fs.rmSync(output, { recursive: true });
 	fs.mkdirSync(output, { recursive: true, mode: 0o700 });
+	const archiveFile=path.join(work,ARCHIVE_FILE);
+	const archive=validateArchive(fs.existsSync(archiveFile)?JSON.parse(fs.readFileSync(archiveFile,"utf8")):{format:1,paths:{}});
+	const inventoryPosts=readPublicInventory(work);
+	const routes=inventoryPosts.routes;
 	const posts = fs.realpathSync(path.join(work, "src/content/posts"));
 	const entries = await step("snapshot", async () => {
 		const entries = [];
@@ -112,6 +119,8 @@ export async function buildRuntimeRelease(
 					422,
 					"快速发布暂不支持已发布的 MDX 或加密文章，请保留静态发布模式。",
 				);
+			const identity=inventoryPosts.posts.find(p=>p.path===file);
+			const route=identity.route;
 			const data = postSchema.parse(front),
 				assets = {},
 				images = new Map();
@@ -143,10 +152,16 @@ export async function buildRuntimeRelease(
 				if (token.type === "image") media(token.href);
 			});
 			if (data.image) media(data.image);
-			const sourceHash = hash(raw + JSON.stringify([...images.keys()].sort()));
+			const linkBody=rewriteReferences(content,(href,kind)=>{
+        if(kind==='image'||/^(?:[a-z][\w+.-]*:|[\/#])/i.test(href))return href;
+        const match=href.match(/^([^?#]+)(.*)$/);if(!match)return href;
+        const dest=path.posix.normalize(path.posix.join(path.posix.dirname(file),decodeURIComponent(match[1])));
+        const target=inventoryPosts.posts.find(p=>p.path===dest);return target?postUrl(target.route)+match[2]:href;
+      });
+      const sourceHash = hash(file+linkBody+raw + JSON.stringify([...images.keys()].sort()));
 			const cached = previous?.entries.find(
 				(entry) =>
-					entry.id === file.slice(0, -3) && entry.sourceHash === sourceHash,
+					entry.id === route && entry.sourceHash === sourceHash,
 			);
 			if (cached) {
 				entries.push(cached);
@@ -157,12 +172,15 @@ export async function buildRuntimeRelease(
 				fs.writeFileSync(path.join(output, "media", name), bytes);
 			}
 			if (data.image && assets[data.image]) data.image = assets[data.image];
-			const rendered = await renderPublishedBody(content, data, assets);
+			const rendered = await renderPublishedBody(linkBody, data, assets);
 			entries.push({
-				id: file.slice(0, -3),
+				id: route,
+        articleId:identity.articleId,
+        sourcePath:file,
 				sourceHash,
 				data: {
 					...data,
+          sourcePath:file,
 					runtimeBody: content,
 					runtimeRender: {
 						headings: rendered.headings,
@@ -172,6 +190,7 @@ export async function buildRuntimeRelease(
 				rendered: { html: rendered.html },
 			});
 		}
+		for(let i=0;i<entries.length;i++)entries[i]=withArchivePath(entries[i],archive);
 		entries.sort(
 			(a, b) =>
 				Date.parse(b.data.published) - Date.parse(a.data.published) ||
@@ -179,7 +198,7 @@ export async function buildRuntimeRelease(
 		);
 		fs.writeFileSync(
 			path.join(output, "published.json"),
-			JSON.stringify({ format: 1, codeRevision, rendererHash, entries }),
+			JSON.stringify({ format: 1, codeRevision, rendererHash, routes, entries }),
 		);
 		return entries;
 	});
@@ -194,14 +213,16 @@ export async function buildRuntimeRelease(
 						if (v && !/^[a-z]+:/i.test(v))
 							node.setAttribute(
 								key,
-								new URL(v, site + "/posts/" + entry.id + "/").href,
+								new URL(v, site + postUrl(entry.id)).href,
 							);
 					}
 				const body = sanitizeHtml(doc.toString(), {
 					allowedTags: sanitizeHtml.defaults.allowedTags.concat(["img"]),
 				});
-				const url = site + "/posts/" + entry.id + "/";
-				return `<item><title>${xml(entry.data.title)}</title><link>${xml(url)}</link><guid isPermaLink="true">${xml(url)}</guid><pubDate>${xml(new Date(entry.data.published).toUTCString())}</pubDate><description>${xml(entry.data.description)}</description><content:encoded>${xml(body)}</content:encoded></item>`;
+				const url = site + postUrl(entry.id);
+        const routeEntry=routes.articles.find(a=>a.id===entry.articleId);
+        const guid=articleGuid(routeEntry,site,entry.id);
+				return `<item><title>${xml(entry.data.title)}</title><link>${xml(url)}</link><guid isPermaLink="${routeEntry?.guid?"false":"true"}">${xml(guid)}</guid><pubDate>${xml(new Date(entry.data.published).toUTCString())}</pubDate><description>${xml(entry.data.description)}</description><content:encoded>${xml(body)}</content:encoded></item>`;
 			})
 			.join("");
 		fs.writeFileSync(
@@ -211,7 +232,7 @@ export async function buildRuntimeRelease(
 		const urls = new Set([
 			"/",
 			...inventory.staticUrls,
-			...entries.map((e) => "/posts/" + e.id + "/"),
+			...entries.map((e) => postUrl(e.id)),
 		]);
 		for (let n = 2; n <= Math.ceil(entries.length / settings.postsPerPage); n++)
 			urls.add("/" + n + "/");
@@ -239,7 +260,7 @@ export async function buildRuntimeRelease(
 			for (const entry of entries)
 				check(
 					await index.addHTMLFile({
-						url: "/posts/" + entry.id + "/",
+						url: postUrl(entry.id),
 						content: `<html lang="${xml(settings.lang.replace("_", "-"))}"><head><title>${xml(entry.data.title)}</title></head><body><article data-pagefind-body><h1 data-pagefind-meta="title">${xml(entry.data.title)}</h1>${entry.rendered.html}</article></body></html>`,
 					}),
 				);

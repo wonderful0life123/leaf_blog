@@ -3,18 +3,17 @@ import {createHash} from 'node:crypto';
 import matter from 'gray-matter';
 import {marked} from 'marked';
 import {StoreError} from './store.mjs';
+import {normalizeArticlePath,postUrl,routeFromPath} from '../../src/lib/article-paths.mjs';
 
 export const digest = value => createHash('sha256').update(value).digest('hex');
 const fail = message => { throw new StoreError(422,message); };
 export function articlePath(value) {
-  if(typeof value!=='string'||value.length>180||! /^(?:[a-z0-9][a-z0-9-]*\/)*[a-z0-9][a-z0-9-]*\.md$/.test(value))fail('文章路径请使用小写英文、数字和短横线，例如 ai-infra/cuda/my-note.md。');
-  return value;
+  try{return normalizeArticlePath(value);}catch(e){fail('文章路径无效：'+e.message);}
 }
-export function publicationContent(draft,input,{previous='',media,expectedHash}={}) {
+export function publicationContent(draft,input,{previous='',media,expectedHash,existingImage}={}) {
   if(draft.deletedAt)fail('请先恢复回收站中的草稿。');
   if(!draft.title.trim()||!draft.body.trim())fail('请先填写文章标题和正文。');
   const target=articlePath(input.path);
-  if(draft.source?.root==='blog'&&draft.source.path!==target)fail('已有博客文章沿用原路径，避免改变网址。');
   if(expectedHash ? digest(previous)!==expectedHash : !!previous)throw new StoreError(409,'博客文章已有变化或路径已被占用，请先核对仓库内容，不能覆盖。');
   const {data}=matter(previous);
   if(data.password)fail('加密文章暂不支持网页发布，请沿用本地编辑流程。');
@@ -40,8 +39,9 @@ export function publicationContent(draft,input,{previous='',media,expectedHash}=
       if(!id)fail('有图片尚未保存到草稿库，请重新上传后再检查。');
       const image=media(id),ext=extension[image.mime];
       if(!ext||digest(image.bytes)!==id)fail('图片校验失败，请重新上传。');
-      const relative=`assets/${path.posix.basename(target,'.md')}/${id}.${ext}`;
-      images.set(path.posix.join(path.posix.dirname(target),relative),Buffer.from(image.bytes));
+      const retained=existingImage?.(token.href,image);
+      const relative=retained||`assets/${path.posix.basename(target,'.md')}/${id}.${ext}`;
+      if(!retained)images.set(path.posix.join(path.posix.dirname(target),relative),Buffer.from(image.bytes));
       const alt=String(token.text).replace(/[\[\]\\\r\n]/g,' '),title=token.title?' '+JSON.stringify(token.title):'';
       replacements.push([token.raw,`![${alt}](${relative}${title})`]);
     });
@@ -55,5 +55,5 @@ export function publicationContent(draft,input,{previous='',media,expectedHash}=
   Object.assign(data,{title:draft.title.trim(),category:draft.category,tags:draft.tags.split(/[,，]/).map(t=>t.trim()).filter(Boolean),description:input.description.trim(),published:new Date(input.published),draft:false});
   if(previous)data.updated=new Date(now);
   const text=matter.stringify(body,data);
-  return {path:target,text,images:[...images].map(([file,bytes])=>({path:file,bytes})),warnings:[...new Set(warnings)],url:'/posts/'+target.slice(0,-3)+'/',hash:digest(text)};
+  return {path:target,text,images:[...images].map(([file,bytes])=>({path:file,bytes})),warnings:[...new Set(warnings)],url:postUrl(routeFromPath(target)),hash:digest(text)};
 }

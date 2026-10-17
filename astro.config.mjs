@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import {ROUTES_FILE,validateRoutes,postUrl} from './src/lib/article-paths.mjs';
 import nodeAdapter from "@astrojs/node";
 import { runtimeIntegration } from "./scripts/runtime/integration.mjs";
 import { expressiveOptions, markdownOptions } from "./src/markdown.config";
@@ -23,7 +25,9 @@ if (process.env.NODE_ENV === "development") {
 const runtime = process.env.WONDER_RUNTIME_BUILD === "1";
 if(runtime && process.env.WONDER_STUDIO_BUILD === "1") throw Error("Runtime and Studio builds must be separate");
 const iconOptions = {include: {}};
+const articleRoutes=fs.existsSync(ROUTES_FILE)?validateRoutes(JSON.parse(fs.readFileSync(ROUTES_FILE,'utf8'))):{articles:[]};
 export default defineConfig({
+  ...(!runtime?{redirects:Object.fromEntries(articleRoutes.articles.flatMap(a=>a.aliases.filter(r=>r!==a.route).map(r=>[postUrl(r),{destination:postUrl(a.route),status:302}])))}:{}),
   ...(runtime ? {adapter:nodeAdapter({mode:"standalone"}),outDir:"./runtime-dist"} : {}),
   ...(process.env.WONDER_STUDIO_BUILD === "1" ? {outDir: "./studio-dist", build: {assets: "studio-static"}} : {}),
 	site: siteConfig.site_url,
@@ -134,6 +138,8 @@ export default defineConfig({
 	],
 	markdown: markdownOptions,
 	vite: {
+    // Keep local Studio language chunks separate from other build modes.
+    ...(process.env.WONDER_STUDIO_LOCAL === "1" ? {cacheDir: "node_modules/.vite-studio"} : {}),
     define: {"import.meta.env.WONDER_RUNTIME_BUILD": JSON.stringify(runtime)},
 		plugins: [tailwindcss(), studioLocalPlugin()],
 		server: {

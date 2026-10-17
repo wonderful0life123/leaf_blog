@@ -1,5 +1,6 @@
 import { loadRenderers } from "astro:container";
 import { render } from "astro:content";
+import fs from "node:fs";
 import { getContainerRenderer as getMDXRenderer } from "@astrojs/mdx";
 import rss, { type RSSFeedItem } from "@astrojs/rss";
 import I18nKey from "@i18n/i18nKey";
@@ -12,6 +13,11 @@ import { experimental_AstroContainer as AstroContainer } from "astro/container";
 import sanitizeHtml from "sanitize-html";
 import { siteConfig } from "@/config";
 import pkg from "../../package.json";
+import {
+	ROUTES_FILE,
+	rssGuidXml,
+	validateRoutes,
+} from "../lib/article-paths.mjs";
 
 function stripInvalidXmlChars(str: string): string {
 	return str.replace(
@@ -23,16 +29,28 @@ function stripInvalidXmlChars(str: string): string {
 
 export async function GET(context: APIContext) {
 	const blog = await getSortedPosts();
+	const routes = fs.existsSync(ROUTES_FILE)
+		? validateRoutes(JSON.parse(fs.readFileSync(ROUTES_FILE, "utf8")))
+		: { articles: [] };
 	const renderers = await loadRenderers([getMDXRenderer()]);
 	const container = await AstroContainer.create({ renderers });
 	const feedItems: RSSFeedItem[] = [];
 	for (const post of blog) {
+		const route = routes.articles.find(
+			(a: any) => a.id === post.data.articleId || a.route === post.id,
+		);
+		const guid = rssGuidXml(
+			route,
+			context.site ?? "https://wonder-ai.info",
+			post.id,
+		);
 		if (post.data.password) {
 			feedItems.push({
 				title: post.data.title,
 				pubDate: post.data.published,
 				description: post.data.description || "",
 				link: url(`/posts/${post.id}/`),
+				customData: guid,
 				content: i18n(I18nKey.passwordProtectedRss),
 			});
 			continue;
@@ -45,6 +63,7 @@ export async function GET(context: APIContext) {
 			pubDate: post.data.published,
 			description: post.data.description || "",
 			link: url(`/posts/${post.id}/`),
+			customData: guid,
 			content: sanitizeHtml(cleanedContent, {
 				allowedTags: sanitizeHtml.defaults.allowedTags.concat(["img"]),
 			}),

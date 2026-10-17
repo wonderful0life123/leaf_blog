@@ -1,9 +1,12 @@
 // Public content routes never expose Studio tasks, raw snapshots or directories.
+
+import { defineMiddleware } from "astro:middleware";
 import fs from "node:fs";
 import path from "node:path";
-import { defineMiddleware } from "astro:middleware";
+import { decodeRoute, redirectTarget } from "../lib/article-paths.mjs";
 import { releaseContext } from "./context";
 import { currentRelease } from "./loader";
+
 const mime = {
 	".js": "text/javascript",
 	".json": "application/json",
@@ -30,7 +33,8 @@ export const runtimeRequest = defineMiddleware(async (context, next) => {
 				"X-Content-Type-Options": "nosniff",
 			},
 		});
-	let release: string, releases: string;
+	let release: string;
+	let releases: string;
 	const pathname = context.url.pathname;
 	try {
 		release = fs.realpathSync(process.env.WONDER_RUNTIME_LIVE_LINK!);
@@ -54,9 +58,29 @@ export const runtimeRequest = defineMiddleware(async (context, next) => {
 		!pathname.startsWith("/api/")
 	)
 		return context.redirect(pathname + "/" + context.url.search, 301);
-	let bytes: string | Buffer | undefined,
-		contentType: string | undefined,
-		immutable = false;
+	if (pathname.startsWith("/posts/")) {
+		let route: string;
+		try {
+			route = decodeRoute(pathname.slice(7).replace(/\/$/, ""));
+		} catch {
+			return failure(404, "Not found");
+		}
+		const target = releaseContext.run(release, () =>
+			redirectTarget(currentRelease().routes, route),
+		);
+		if (target)
+			return new Response(null, {
+				status: 302,
+				headers: {
+					Location: target + context.url.search,
+					"Cache-Control": "no-store",
+				},
+			});
+	}
+
+	let bytes: string | Buffer | undefined;
+	let contentType: string | undefined;
+	let immutable = false;
 	if (pathname === "/pagefind/pagefind.js") {
 		bytes = proxy;
 		contentType = "text/javascript";

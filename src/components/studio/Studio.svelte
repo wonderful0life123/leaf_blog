@@ -1,257 +1,1142 @@
 <script>
-  import { onMount } from 'svelte';
-  import WritingEditor from './WritingEditor.svelte';
-  import Icon from '../common/Icon.svelte';
-  import StudioMenu from './StudioMenu.svelte';
-  import {editorPortal} from './editor-portal.mjs';
-  import {selectArticles,excerpt,displayDate} from './draft-list.mjs';
-  import { marked } from 'marked';
-  import katex from 'katex';
-  import 'katex/dist/katex.min.css';
-  export let articles = [];
-  export let notes = [];
-  export let assetMap = {};
-  export let serverMode = false;
-  let account = null, authNeeded = false, loginError = "";
-  $: storageLabel = serverMode ? "服务器" : "本机";
-  let drafts = [], items = [], loading = true, busy = false, uploading = false;
-  let trash=[],sort='updated',pendingAction=null;
-  let screen = 'home', filter = 'all', search = '', current = null;
-  let dialog = '', noteQuery = '', folder = 'all', selected = null, notice = '', saved = '';
-  let focused = true, settingsOpen = false;
-  let bodyEditor, publishing = false, timer, toastTimer;
-  let publishInfo=null, publication=null, publishError='',publishConsent=false,publishTimer;
-  let publishPath='',publishDescription='',publishDate='';
-  const publicationStages={source:'核对博客版本',workspace:'准备预览环境',content:'检查正文与图片',render:'渲染当前文章',build:'构建发布版本',icons:'准备图标',site:'生成博客页面与图片',search:'生成搜索索引',snapshot:'准备文章与图片',feeds:'更新订阅与站点地图',reuse:'读取已有预览'};
-  const duration=ms=>ms<1000?'不到 1 秒':ms<60000?`${Math.round(ms/1000)} 秒`:`${Math.floor(ms/60000)} 分 ${Math.floor(ms%60000/1000)} 秒`;
-  let dirty = false, saving = false, saveError = '', conflict = false, editVersion = 0, saveTask = null;
-  let recoveryWarning = '', loadError = '';
-  $: folders = [...new Set(notes.map(n=>n.folder))].sort();
-  const sourcePairs = {'AI Infra/cuda/全局位置计算.md':'ai-infra/cuda/global-indexing.md','AI Infra/cuda/element wise算子.md':'ai-infra/cuda/element-wise.md','AI Infra/cuda/参考资料.md':'ai-infra/cuda/references.md','AI Infra/telilang/TileLang-ascend.md':'ai-infra/telilang/tilelang-ascend.md'};
-  const normalize = d => ({...d, root:d.source?.root||'blog',path:d.source?.path||'',noteId:d.source?.root==='notes'?d.source.path:undefined});
-  $: items = [...drafts, ...articles.filter(a=>!drafts.some(d=>(d.source?.root==='blog'&&d.source.path===a.path)||d.publication?.path===a.path))];
-  $: filtered = selectArticles(filter==='trash'?trash:items,filter,search,sort);
-  $: found = notes.filter(n=>(folder==='all'||n.folder===folder) && (n.title+' '+n.folder).toLowerCase().includes(noteQuery.toLowerCase()));
-  $: draftCount = items.filter(a=>a.status==='draft').length;
-  $: preview = current ? markdown(current.body,current) : '';
-  $: notePreview = selected ? markdown(selected.body,selected) : '';
-  function portal(node) { document.body.appendChild(node);return {destroy(){node.remove();}}; }
-  function toast(text) { notice=text; clearTimeout(toastTimer); toastTimer=setTimeout(()=>notice='',4500); }
-  function keydown(e) { if(e.key==='Escape'&&!busy&&!publishing)dialog='';if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();persist();} }
-  async function request(url,options={}) {
-    const [pathname,query]=url.split('?');
-    const response=await fetch('/studio-api'+pathname+'/'+(query?'?'+query:''),{...options,signal:AbortSignal.timeout(15000)});
-    const result=await response.json();
-    if(!response.ok){if(serverMode&&response.status===401)authNeeded=true;const e=new Error(result.error||'请求失败');e.status=response.status;throw e;}
-    return result;
-  }
-  const payload = d => ({title:d.title,body:d.body,category:d.category,tags:d.tags,revision:d.revision});
-  const recoveryKey = id => 'wonder-draft-recovery:'+id;
-  function backupLocal() {
-    if(!current)return;
-    try{sessionStorage.setItem(recoveryKey(current.id),JSON.stringify({...payload(current),id:current.id}));recoveryWarning='';}
-    catch{recoveryWarning='浏览器临时恢复空间不足，请等待'+storageLabel+'保存完成后再离开。';}
-  }
-  function clearRecovery(id){try{sessionStorage.removeItem(recoveryKey(id));}catch{}}
-  function remember(d){drafts=[normalize(d),...drafts.filter(a=>a.id!==d.id)];}
-  async function refreshDrafts(){
-    const [active,deleted]=await Promise.all([request('/drafts'),request('/drafts?state=trash')]);
-    drafts=active.drafts.map(normalize);trash=deleted.drafts.map(normalize);
-  }
-  function address(id){const url=new URL(location.href);if(id)url.searchParams.set('draft',id);else url.searchParams.delete('draft');history.replaceState({},'',url);}
-  async function initialize() {
-    loading=true;loadError='';
-    if(serverMode){const code=new URL(location.href).searchParams.get('loginError');loginError={denied:'这个 GitHub 账号没有写作权限，请切换到博客主人的账号。',unavailable:'GitHub 暂时无法连接，请稍后重新登录。',busy:'登录尝试较多，请稍后再试。',expired:'登录已取消或验证过期，请重新开始。'}[code]||'';}
-    try {
-      if(serverMode){account=(await request('/session')).user;authNeeded=false;const catalog=await request('/catalog');articles=catalog.articles;notes=catalog.notes;assetMap=catalog.assetMap;}
-      await refreshDrafts();
-      const id=new URL(location.href).searchParams.get('draft');
-      if(id){const draft=drafts.find(d=>d.id===id);if(draft)open(draft);else{address(null);loadError='找不到之前打开的草稿，请从列表选择。';}}
-    }catch(e){if(serverMode&&e.status===401){account=null;}else loadError='无法读取草稿，请确认保存服务已启动后重试。';}
-    finally{loading=false;}
-  }
-  onMount(()=>{
-    initialize();
-    const beforeUnload=e=>{if(dirty||saving||uploading){e.preventDefault();e.returnValue='';}};
-    const visibility=()=>{if(document.visibilityState==='hidden'&&dirty&&!conflict)persist();};
-    const leave=async e=>{
-      const a=e.target.closest?.('a[href]');if(!a||a.hasAttribute('download')||a.hasAttribute('data-auth-link')||(!dirty&&!saving&&!uploading))return;
-      e.preventDefault();e.stopImmediatePropagation();
-      if(uploading){toast('图片正在保存，请稍候。');return;}
-      if(await persist())location.assign(a.href);
-    };
-    window.addEventListener('beforeunload',beforeUnload);
-    document.addEventListener('visibilitychange',visibility);
-    document.addEventListener('click',leave,true);
-    return ()=>{clearTimeout(timer);clearTimeout(toastTimer);clearTimeout(publishTimer);window.removeEventListener('beforeunload',beforeUnload);document.removeEventListener('visibilitychange',visibility);document.removeEventListener('click',leave,true);};
-  });
-  function open(draft) {
-    current={...normalize(draft)};screen='editor';dirty=false;conflict=false;saveError='';editVersion=0;
-    saved='已保存到'+storageLabel+' · '+new Date(current.updatedAt).toLocaleTimeString('zh-CN');address(current.id);
-    try {
-      const recovery=JSON.parse(sessionStorage.getItem(recoveryKey(current.id))||'null');
-      if(recovery&&['title','body','category','tags'].every(k=>typeof recovery[k]==='string')) {
-        if(JSON.stringify(payload(current))===JSON.stringify({title:recovery.title,body:recovery.body,category:recovery.category,tags:recovery.tags,revision:recovery.revision})){clearRecovery(current.id);return;}
-        const versionMatches=recovery.revision===current.revision;
-        current={...current,title:recovery.title,body:recovery.body,category:recovery.category,tags:recovery.tags};dirty=true;editVersion++;
-        if(versionMatches){saved='恢复了未保存的编辑，正在保存…';timer=setTimeout(persist,100);}
-        else {conflict=true;saveError='已恢复上次未保存的文字，但'+storageLabel+'已有新版。请先另存副本，避免覆盖。';saved='有待处理的版本冲突';}
-      }
-    }catch{recoveryWarning='无法读取浏览器恢复副本，当前显示'+storageLabel+'已保存版本。';}
-  }
-  async function edit(a) {
-    if(loading||busy||uploading)return;
-    if(!(await persist()))return;
-    if(a.persisted){busy=true;try{const d=(await request('/drafts/'+a.id)).draft;if(d.deletedAt)throw new Error('这篇草稿已在回收站，请先恢复。');remember(d);open(d);}catch(e){toast(e.message);}finally{busy=false;}return;}
-    busy=true;
-    try {
-      const draft=(await request('/drafts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload(a),id:crypto.randomUUID(),source:{root:a.root,path:a.path}})})).draft;
-      remember(draft);open(draft);toast('已保存为'+storageLabel+'编辑副本，博客原文保持不变。');
-    }catch(e){toast(e.message);}finally{busy=false;}
-  }
-  async function create() {
-    if(loading||busy||uploading||!(await persist()))return;
-    busy=true;
-    try {const draft=(await request('/drafts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:crypto.randomUUID(),title:'',body:'',category:'',tags:''})})).draft;remember(draft);filter='draft';search='';open(draft);}
-    catch(e){toast(e.message);}finally{busy=false;}
-  }
-  async function duplicateDraft(article){
-    if(busy||loading)return;busy=true;
-    try{
-      const {draft}=await request('/drafts/'+article.id+'/duplicate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:crypto.randomUUID(),revision:article.revision})});
-      remember(draft);open(draft);toast('已复制为独立草稿，原草稿保持不变。');
-    }catch(e){toast(e.message);}finally{busy=false;}
-  }
-  function confirmAction(article,action){if(busy)return;pendingAction={article,action};dialog='draft-action';}
-  async function manageDraft(article,action){
-    if(busy)return;busy=true;
-    try{
-      const {draft}=await request('/drafts/'+article.id+'/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:article.revision})});
-      drafts=drafts.filter(d=>d.id!==article.id);trash=trash.filter(d=>d.id!==article.id);
-      if(draft){if(draft.deletedAt)trash=[normalize(draft),...trash];else remember(draft);}
-      clearRecovery(article.id);dialog='';pendingAction=null;
-      toast(action==='trash'?'已移入回收站，可随时恢复。':action==='restore'?'草稿已恢复。':'草稿已彻底删除。');
-    }catch(e){toast(e.message);if(e.status===409||e.status===404){try{await refreshDrafts();dialog='';pendingAction=null;}catch{}}}finally{busy=false;}
-  }
-  async function persist() {
-    clearTimeout(timer);
-    if(saveTask)return saveTask;
-    if(!current||!dirty)return true;
-    if(conflict)return false;
-    saveTask=(async()=>{
-      saving=true;saveError='';
-      try {
-        while(dirty) {
-          const snapshot={...current},version=editVersion;saved='正在保存到'+storageLabel+'…';
-          const {draft}=await request('/drafts/'+snapshot.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload(snapshot))});
-          current={...current,revision:draft.revision,assets:draft.assets,updatedAt:draft.updatedAt};remember(draft);
-          if(editVersion===version){dirty=false;clearRecovery(current.id);saved='已保存到'+storageLabel+' · '+new Date(draft.updatedAt).toLocaleTimeString('zh-CN');}
-          else backupLocal();
-        }
-        return true;
-      }catch(e){conflict=e.status===409;saveError=e.message||'保存失败，请检查服务后重试';saved=conflict?'版本冲突 · 尚未保存':'保存失败 · 修改仍在当前页面';backupLocal();return false;}
-      finally{saving=false;}
-    })();
-    const result=await saveTask;saveTask=null;return result;
-  }
-  function changed() {dirty=true;editVersion++;saved='有修改，等待保存…';queueMicrotask(backupLocal);clearTimeout(timer);if(!conflict)timer=setTimeout(persist,600);}
-  async function home() {if(busy)return;if(uploading){toast('图片正在保存，请稍候。');return;}if(await persist()){screen='home';current=null;address(null);}}
-  function category(p) {return p==='.'?'':p.replace(/^AI Infra/,'AI infra').replace(/\/tilelang-puzzles$/,'/TileLang Puzzles');}
-  async function importNote() {
-    if(!selected||busy||uploading)return;
-    if(!(await persist())){dialog='';return;}
-    const match=items.find(a=>a.noteId===selected.id||a.id===sourcePairs[selected.id]||(a.source?.root==='blog'&&a.source.path===sourcePairs[selected.id]));
-    if(match){dialog='';await edit(match);return;}
-    busy=true;
-    try {
-      const draft=(await request('/drafts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:crypto.randomUUID(),title:selected.title,body:selected.body,category:category(selected.folder),tags:'',source:{root:'notes',path:selected.path}})})).draft;
-      remember(draft);open(draft);dialog='';toast('笔记和引用图片已保存到'+storageLabel+'草稿。');
-    }catch(e){toast(e.message);}finally{busy=false;}
-  }
-  async function saveCopy() {
-    if(busy)return;busy=true;
-    try {
-      const {draft}=await request('/drafts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload(current),id:crypto.randomUUID(),title:(current.title||'未命名文章')+'（冲突副本）',copyFrom:current.id})});
-      clearRecovery(current.id);remember(draft);open(draft);toast('你的修改已另存为新草稿，原草稿未被覆盖。');
-    }catch(e){toast(e.message);}finally{busy=false;}
-  }
-  function showImport(){if(busy||uploading)return;noteQuery='';folder='all';selected=notes.find(n=>n.id.includes('Puzzle 01'))||notes[0];dialog='import';}
-  function exportFile(){const text='---\ntitle: '+JSON.stringify(current.title||'未命名文章')+'\ncategory: '+JSON.stringify(current.category)+'\ntags: '+JSON.stringify(current.tags.split(/[,，]/).map(x=>x.trim()).filter(Boolean))+'\npublished: '+new Date().toISOString().slice(0,10)+'\ndraft: true\n---\n\n'+current.body;const url=URL.createObjectURL(new Blob([text],{type:'text/markdown;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=(current.title||'未命名文章').replace(/[\\/:*?"<>|]/g,'-')+'.md';a.click();URL.revokeObjectURL(url);toast('正文已导出，图片保存在'+storageLabel+'草稿库中。');}
-  async function publish(){
-    if(busy||uploading||publishing)return;
-    if(!await persist())return;
-    dialog='publish';publishError='';publishConsent=false;publishInfo=null;publication=null;publishing=true;
-    try{publishInfo=await request('/drafts/'+current.id+'/publication');publishPath=publishInfo.path||'';publishDescription=publishInfo.description||'';publishDate=publishInfo.published||'';publication=publishInfo.latest;if(publication?.state==='ready'&&publication.revision!==current.revision)publication=null;pollPublication();}
-    catch(e){publishError=e.message;}finally{publishing=false;}
-  }
-  function resetPublication(){publication=null;publishConsent=false;publishError='';clearTimeout(publishTimer);}
-  function stylePublicationPreview(event){
-    const doc=event.currentTarget.contentDocument;if(!doc)return;
-    const page=document.documentElement,preview=doc.documentElement;
-    preview.style.setProperty('--hue',getComputedStyle(page).getPropertyValue('--hue'));
-    preview.classList.toggle('dark',page.classList.contains('dark'));
-    preview.setAttribute('data-theme',(page.classList.contains('dark')?preview.dataset.darkTheme:preview.dataset.lightTheme)||page.getAttribute('data-theme')||'light');
-    const heading=doc.querySelector('main h1');
-    if(heading&&!preview.dataset.lightTheme){heading.style.scrollMarginTop='6rem';heading.scrollIntoView({block:'start'});}
-  }
-  function pollPublication(delay=publication?.state==='publishing'?1500:400){
-    clearTimeout(publishTimer);
-    if(!publication||!['building','publishing'].includes(publication.state)||dialog!=='publish')return;
-    const id=publication.id;
-    publishTimer=setTimeout(async()=>{try{const result=await request('/publications/'+id);if(publication?.id===id){publication=result.publication;publishError='';if(publication.state==='published'){await refreshDrafts();if(serverMode){const catalog=await request('/catalog');articles=catalog.articles;}const fresh=drafts.find(d=>d.id===current?.id);if(fresh)current={...current,publication:fresh.publication,status:fresh.status};}pollPublication();}}catch(e){if(publication?.id===id){publishError=e.status===401?'登录已过期，请重新登录后查看任务。':'暂时无法获取进度，后台任务仍会继续，正在重试连接…';if(e.status!==401)pollPublication(5000);}}},delay);
-  }
-  async function preparePublication(){
-    publishing=true;publishError='';publishConsent=false;
-    try{if(!await persist())return;publication=(await request('/drafts/'+current.id+'/publication',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:current.revision,path:publishPath,description:publishDescription,published:publishDate})})).publication;pollPublication();}
-    catch(e){publishError=e.message;}finally{publishing=false;}
-  }
-  async function confirmPublication(){
-    if(!publishConsent&&publication?.state!=='retry')return;
-    publishing=true;publishError='';
-    try{publication=(await request('/publications/'+publication.id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:publication.revision,confirm:true})})).publication;pollPublication();}
-    catch(e){publishError=e.message;}finally{publishing=false;}
-  }
-  async function uploadImage(file) {
-    if(!current||busy)throw new Error('当前文章暂时无法上传图片');
-    const result=await request('/media',{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
-    return result.url;
-  }
-  async function reauthenticate(){try{account=(await request('/session')).user;authNeeded=false;await persist();}catch(e){toast('请先在新窗口完成 GitHub 登录，再重试。');}}
-  async function logout(){if(uploading||busy||!(await persist()))return;try{await request('/logout',{method:'POST'});for(const key of Object.keys(sessionStorage))if(key.startsWith('wonder-draft-recovery:'))sessionStorage.removeItem(key);current=null;drafts=[];notes=[];articles=[];account=null;dialog='';location.assign('/studio/');}catch(e){toast(e.message);}}
-  function status(a){return a.publication?(a.publication.revision===a.revision?'已发布':'已发布 · 有修改'):a.persisted?storageLabel+'草稿':a.status==='published'?'已发布':'仓库草稿';}
-  function imageSource(href,a){
-    let src=a.assets?.[href]||href;
-    if(!/^(https?:|\/studio-api\/media\/)/i.test(src)){
-      try { const base=new URL('https://local/'+a.path);const u=new URL(src,base);src='/studio/assets/'+(assetMap[a.root+'/'+decodeURIComponent(u.pathname.slice(1))]||'missing')+'/'; }catch{src='';}
-    }
-    if(/^\/studio-api\/media\/[a-f\d]{64}$/.test(src))src+='/';
-    return src;
-  }
-  function markdown(raw,a){
-    if(typeof document==='undefined')return '';
-    const renderer=new marked.Renderer();
-    renderer.image=({href,text})=>{
-      const src=imageSource(href,a);
-      return `<img src="${escapeHtml(src)}" alt="${escapeHtml(text||'')}" loading="eager">`;
-    };
-    const html=marked.parse(raw,{renderer,breaks:false});
-    const doc=new DOMParser().parseFromString(html,'text/html');
-    for(const el of doc.body.querySelectorAll('*')){
-      if(!['P','BR','HR','H1','H2','H3','H4','H5','H6','UL','OL','LI','BLOCKQUOTE','PRE','CODE','STRONG','EM','DEL','A','IMG','TABLE','THEAD','TBODY','TR','TD','TH','INPUT'].includes(el.tagName)){el.replaceWith(document.createTextNode(el.textContent||''));continue;}
-      for(const attr of [...el.attributes])if(!['href','src','alt','title','class','type','checked','disabled','start'].includes(attr.name))el.removeAttribute(attr.name);
-      if(el.tagName==='A'){if(!/^(https?:|mailto:|#|\/)/i.test(el.getAttribute('href')||''))el.removeAttribute('href');el.setAttribute('target','_blank');el.setAttribute('rel','noopener noreferrer');}
-      if(el.tagName==='IMG'&&!/^(https?:|blob:|\/studio\/assets\/|\/studio-api\/media\/)/i.test(el.getAttribute('src')||''))el.removeAttribute('src');
-      if(el.tagName==='INPUT'){el.setAttribute('disabled','');el.setAttribute('type','checkbox');}
-    }
-    const walker=document.createTreeWalker(doc.body,NodeFilter.SHOW_TEXT);let nodes=[],n;
-    while(n=walker.nextNode())if(!n.parentElement.closest('code,pre'))nodes.push(n);
-    for(const node of nodes){const text=node.textContent;const regex=/\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g;let m,last=0,frag=document.createDocumentFragment();while(m=regex.exec(text)){frag.append(text.slice(last,m.index));let span=document.createElement('span');span.innerHTML=katex.renderToString(m[1]||m[2],{displayMode:!!m[1],throwOnError:false,trust:false});frag.append(span);last=regex.lastIndex;}if(last){frag.append(text.slice(last));node.replaceWith(frag);}}
-    return doc.body.innerHTML;
-  }
-  function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+import { onMount } from "svelte";
+import { postUrl, routeFromPath } from "../../lib/article-paths.mjs";
+import {
+	articleFolder,
+	folderPath,
+	folderSegments,
+} from "../../lib/studio-organization.mjs";
+import Icon from "../common/Icon.svelte";
+import ArticleWorkbench from "./ArticleWorkbench.svelte";
+import { articleKey, mergeArticles } from "./article-workbench.mjs";
+import CategoryPicker from "./CategoryPicker.svelte";
+import PublicArchiveDialog from "./PublicArchiveDialog.svelte";
+import StudioMenu from "./StudioMenu.svelte";
+import WritingEditor from "./WritingEditor.svelte";
+
+let archiveDialog = false;
+async function readOrganization() {
+	organization = (await request("/organization")).organization;
+	return organization;
+}
+
+import katex from "katex";
+import { marked } from "marked";
+import { displayDate, excerpt, selectArticles } from "./draft-list.mjs";
+import { editorPortal } from "./editor-portal.mjs";
+import "katex/dist/katex.min.css";
+export let articles = [];
+export let notes = [];
+export let assetMap = {};
+export let serverMode = false;
+let account = null;
+let authNeeded = false;
+let loginError = "";
+$: storageLabel = serverMode ? "服务器" : "本机";
+let drafts = [];
+let items = [];
+let loading = true;
+let busy = false;
+let uploading = false;
+let trash = [];
+let sort = "updated";
+let pendingAction = null;
+let screen = "home";
+let filter = "all";
+let search = "";
+let current = null;
+let workbenchSelection = "";
+let organization = null;
+let organizationBusy = false;
+let organizationPanelOpen = false;
+let dialog = "";
+let noteQuery = "";
+let folder = "all";
+let selected = null;
+let notice = "";
+let saved = "";
+let focused = true;
+let settingsOpen = false;
+let categoriesLoading = false;
+let categoriesError = "";
+async function refreshCategories() {
+	categoriesLoading = true;
+	categoriesError = "";
+	try {
+		organization = (await request("/organization")).organization;
+	} catch {
+		categoriesError = "目录刷新失败，请重试。当前目录已保留。";
+	} finally {
+		categoriesLoading = false;
+	}
+}
+function toggleSettings() {
+	settingsOpen = !settingsOpen;
+	if (settingsOpen) refreshCategories();
+}
+async function selectCategory(value) {
+	if (!current || busy || categoriesLoading || categoriesError) return;
+	const target = value
+		? organization.folders.find(
+				(f) => folderSegments(organization.folders, f.id).join("/") === value,
+			)?.id
+		: null;
+	if (target === undefined || target === articleFolder(current, organization))
+		return;
+	try {
+		await moveDirectory({ kind: "article", id: "draft:" + current.id, target });
+		toast("所在目录已保存，确认发布后同步到博客和仓库。");
+	} catch (e) {
+		toast(e.message);
+	}
+}
+$: currentLocation =
+	current && organization
+		? folderSegments(
+				organization.folders,
+				articleFolder(current, organization),
+			).join("/")
+		: "";
+let bodyEditor;
+let publishing = false;
+let timer;
+let toastTimer;
+let publishInfo = null;
+let publication = null;
+let publishError = "";
+let publishConsent = false;
+let publishTimer;
+let publishFilename = "";
+let publishDescription = "";
+let publishDate = "";
+$: publishPath = publishInfo
+	? [publishInfo.path.split("/").slice(0, -1).join("/"), publishFilename]
+			.filter(Boolean)
+			.join("/")
+	: "";
+const publicationStages = {
+	source: "核对博客版本",
+	workspace: "准备预览环境",
+	content: "检查正文与图片",
+	render: "渲染当前文章",
+	build: "构建发布版本",
+	icons: "准备图标",
+	site: "生成博客页面与图片",
+	search: "生成搜索索引",
+	snapshot: "准备文章与图片",
+	feeds: "更新订阅与站点地图",
+	reuse: "读取已有预览",
+};
+const duration = (ms) =>
+	ms < 1000
+		? "不到 1 秒"
+		: ms < 60000
+			? `${Math.round(ms / 1000)} 秒`
+			: `${Math.floor(ms / 60000)} 分 ${Math.floor((ms % 60000) / 1000)} 秒`;
+let dirty = false;
+let saving = false;
+let saveError = "";
+let conflict = false;
+let editVersion = 0;
+let saveTask = null;
+let recoveryWarning = "";
+let loadError = "";
+$: folders = [...new Set(notes.map((n) => n.folder))].sort();
+const sourcePairs = {
+	"AI Infra/cuda/全局位置计算.md": "ai-infra/cuda/global-indexing.md",
+	"AI Infra/cuda/element wise算子.md": "ai-infra/cuda/element-wise.md",
+	"AI Infra/cuda/参考资料.md": "ai-infra/cuda/references.md",
+	"AI Infra/telilang/TileLang-ascend.md":
+		"ai-infra/telilang/tilelang-ascend.md",
+};
+const normalize = (d) => ({
+	...d,
+	root: d.source?.root || "blog",
+	path: d.source?.path || "",
+	noteId: d.source?.root === "notes" ? d.source.path : undefined,
+});
+$: items = mergeArticles(drafts, articles);
+$: filtered = selectArticles(
+	filter === "trash" ? trash : items,
+	filter,
+	search,
+	sort,
+);
+$: found = notes.filter(
+	(n) =>
+		(folder === "all" || n.folder === folder) &&
+		(n.title + " " + n.folder).toLowerCase().includes(noteQuery.toLowerCase()),
+);
+$: draftCount = items.filter((a) => a.status === "draft").length;
+$: preview = current ? markdown(current.body, current) : "";
+$: notePreview = selected ? markdown(selected.body, selected) : "";
+function portal(node) {
+	document.body.appendChild(node);
+	return {
+		destroy() {
+			node.remove();
+		},
+	};
+}
+function toast(text) {
+	notice = text;
+	clearTimeout(toastTimer);
+	toastTimer = setTimeout(() => (notice = ""), 4500);
+}
+function keydown(e) {
+	if (e.key === "Escape" && !busy && !publishing) dialog = "";
+	if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+		e.preventDefault();
+		persist();
+	}
+}
+async function request(url, options = {}) {
+	const [pathname, query] = url.split("?");
+	const response = await fetch(
+		"/studio-api" + pathname + "/" + (query ? "?" + query : ""),
+		{ ...options, signal: AbortSignal.timeout(15000) },
+	);
+	const result = await response.json();
+	if (!response.ok) {
+		if (serverMode && response.status === 401) authNeeded = true;
+		const e = new Error(result.error || "请求失败");
+		e.status = response.status;
+		throw e;
+	}
+	return result;
+}
+const payload = (d) => ({
+	title: d.title,
+	body: d.body,
+	category: d.category,
+	tags: d.tags,
+	revision: d.revision,
+});
+const recoveryKey = (id) => "wonder-draft-recovery:" + id;
+function backupLocal() {
+	if (!current) return;
+	try {
+		sessionStorage.setItem(
+			recoveryKey(current.id),
+			JSON.stringify({ ...payload(current), id: current.id }),
+		);
+		recoveryWarning = "";
+	} catch {
+		recoveryWarning =
+			"浏览器临时恢复空间不足，请等待" + storageLabel + "保存完成后再离开。";
+	}
+}
+function clearRecovery(id) {
+	try {
+		sessionStorage.removeItem(recoveryKey(id));
+	} catch {}
+}
+function remember(d) {
+	drafts = [normalize(d), ...drafts.filter((a) => a.id !== d.id)];
+}
+async function refreshDrafts() {
+	const [active, deleted] = await Promise.all([
+		request("/drafts"),
+		request("/drafts?state=trash"),
+	]);
+	drafts = active.drafts.map(normalize);
+	trash = deleted.drafts.map(normalize);
+}
+let archivePollTimer;
+let archiveRefreshed = "";
+async function refreshWorkbench() {
+	await refreshDrafts();
+	const catalog = await request("/catalog");
+	articles = catalog.articles;
+	notes = catalog.notes;
+	assetMap = catalog.assetMap;
+	organization = (await request("/organization")).organization;
+}
+async function trackArchive(job) {
+	clearTimeout(archivePollTimer);
+	if (job.state === "published" && archiveRefreshed !== job.id) {
+		try {
+			await refreshWorkbench();
+			archiveRefreshed = job.id;
+		} catch (e) {
+			toast("目录已发布，工作台刷新失败，请点击刷新。");
+		}
+	} else if (["building", "publishing"].includes(job.state)) {
+		archivePollTimer = setTimeout(async () => {
+			try {
+				trackArchive((await request("/publications/" + job.id)).publication);
+			} catch (e) {
+				if (e.status !== 401)
+					archivePollTimer = setTimeout(() => trackArchive(job), 5000);
+			}
+		}, 1500);
+	}
+}
+async function moveDirectory(input) {
+	organizationBusy = true;
+	try {
+		organization = (
+			await request("/organization/move", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ ...input, revision: organization.revision }),
+			})
+		).organization;
+		return organization;
+	} catch (e) {
+		if (e.status === 409)
+			organization = (await request("/organization")).organization;
+		throw e;
+	} finally {
+		organizationBusy = false;
+	}
+}
+async function editDirectory(input) {
+	organizationBusy = true;
+	try {
+		organization = (
+			await request("/organization/folders", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ ...input, revision: organization.revision }),
+			})
+		).organization;
+		return organization;
+	} catch (e) {
+		if (e.status === 409 || e.status === 404)
+			organization = (await request("/organization")).organization;
+		throw e;
+	} finally {
+		organizationBusy = false;
+	}
+}
+async function undoDirectory(token) {
+	organizationBusy = true;
+	try {
+		organization = (
+			await request("/organization/undo", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ token, revision: organization.revision }),
+			})
+		).organization;
+		return organization;
+	} catch (e) {
+		if (e.status === 409)
+			organization = (await request("/organization")).organization;
+		throw e;
+	} finally {
+		organizationBusy = false;
+	}
+}
+function address(id) {
+	const url = new URL(location.href);
+	if (id) url.searchParams.set("draft", id);
+	else url.searchParams.delete("draft");
+	history.replaceState({}, "", url);
+}
+async function initialize() {
+	loading = true;
+	loadError = "";
+	if (serverMode) {
+		const code = new URL(location.href).searchParams.get("loginError");
+		loginError =
+			{
+				denied: "这个 GitHub 账号没有写作权限，请切换到博客主人的账号。",
+				unavailable: "GitHub 暂时无法连接，请稍后重新登录。",
+				busy: "登录尝试较多，请稍后再试。",
+				expired: "登录已取消或验证过期，请重新开始。",
+			}[code] || "";
+	}
+	try {
+		if (serverMode) {
+			account = (await request("/session")).user;
+			authNeeded = false;
+		}
+		{
+			const catalog = await request("/catalog");
+			articles = catalog.articles;
+			notes = catalog.notes;
+			assetMap = catalog.assetMap;
+		}
+		await refreshDrafts();
+		organization = (await request("/organization")).organization;
+		const id = new URL(location.href).searchParams.get("draft");
+		if (id) {
+			const draft = drafts.find((d) => d.id === id);
+			if (draft) open(draft);
+			else {
+				address(null);
+				loadError = "找不到之前打开的草稿，请从列表选择。";
+			}
+		}
+	} catch (e) {
+		if (serverMode && e.status === 401) {
+			account = null;
+		} else loadError = "无法读取草稿，请确认保存服务已启动后重试。";
+	} finally {
+		loading = false;
+	}
+}
+onMount(() => {
+	initialize();
+	const beforeUnload = (e) => {
+		if (dirty || saving || uploading) {
+			e.preventDefault();
+			e.returnValue = "";
+		}
+	};
+	const visibility = () => {
+		if (document.visibilityState === "hidden" && dirty && !conflict) persist();
+	};
+	const leave = async (e) => {
+		const a = e.target.closest?.("a[href]");
+		if (
+			!a ||
+			a.hasAttribute("download") ||
+			a.hasAttribute("data-auth-link") ||
+			(!dirty && !saving && !uploading)
+		)
+			return;
+		e.preventDefault();
+		e.stopImmediatePropagation();
+		if (uploading) {
+			toast("图片正在保存，请稍候。");
+			return;
+		}
+		if (await persist()) location.assign(a.href);
+	};
+	window.addEventListener("beforeunload", beforeUnload);
+	document.addEventListener("visibilitychange", visibility);
+	document.addEventListener("click", leave, true);
+	return () => {
+		clearTimeout(timer);
+		clearTimeout(toastTimer);
+		clearTimeout(publishTimer);
+		clearTimeout(archivePollTimer);
+		window.removeEventListener("beforeunload", beforeUnload);
+		document.removeEventListener("visibilitychange", visibility);
+		document.removeEventListener("click", leave, true);
+	};
+});
+function open(draft) {
+	current = { ...normalize(draft) };
+	workbenchSelection = articleKey(current);
+	screen = "editor";
+	dirty = false;
+	conflict = false;
+	saveError = "";
+	editVersion = 0;
+	saved =
+		"已保存到" +
+		storageLabel +
+		" · " +
+		new Date(current.updatedAt).toLocaleTimeString("zh-CN");
+	address(current.id);
+	try {
+		const recovery = JSON.parse(
+			sessionStorage.getItem(recoveryKey(current.id)) || "null",
+		);
+		if (
+			recovery &&
+			["title", "body", "category", "tags"].every(
+				(k) => typeof recovery[k] === "string",
+			)
+		) {
+			if (
+				JSON.stringify(payload(current)) ===
+				JSON.stringify({
+					title: recovery.title,
+					body: recovery.body,
+					category: recovery.category,
+					tags: recovery.tags,
+					revision: recovery.revision,
+				})
+			) {
+				clearRecovery(current.id);
+				return;
+			}
+			const versionMatches = recovery.revision === current.revision;
+			current = {
+				...current,
+				title: recovery.title,
+				body: recovery.body,
+				category: recovery.category,
+				tags: recovery.tags,
+			};
+			dirty = true;
+			editVersion++;
+			if (versionMatches) {
+				saved = "恢复了未保存的编辑，正在保存…";
+				timer = setTimeout(persist, 100);
+			} else {
+				conflict = true;
+				saveError =
+					"已恢复上次未保存的文字，但" +
+					storageLabel +
+					"已有新版。请先另存副本，避免覆盖。";
+				saved = "有待处理的版本冲突";
+			}
+		}
+	} catch {
+		recoveryWarning =
+			"无法读取浏览器恢复副本，当前显示" + storageLabel + "已保存版本。";
+	}
+}
+async function edit(a) {
+	if (loading || busy || uploading) return;
+	if (!(await persist())) return;
+	if (a.persisted) {
+		busy = true;
+		try {
+			const d = (await request("/drafts/" + a.id)).draft;
+			if (d.deletedAt) throw new Error("这篇草稿已在回收站，请先恢复。");
+			remember(d);
+			open(d);
+		} catch (e) {
+			toast(e.message);
+		} finally {
+			busy = false;
+		}
+		return;
+	}
+	busy = true;
+	try {
+		const draft = (
+			await request("/drafts", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					...payload(a),
+					id: crypto.randomUUID(),
+					source: { root: a.root, path: a.path },
+				}),
+			})
+		).draft;
+		remember(draft);
+		open(draft);
+		toast("已保存为" + storageLabel + "编辑副本，博客原文保持不变。");
+	} catch (e) {
+		toast(e.message);
+	} finally {
+		busy = false;
+	}
+}
+async function create(selectedTarget = undefined) {
+	const target =
+		selectedTarget === null || typeof selectedTarget === "string"
+			? selectedTarget
+			: undefined;
+	if (loading || busy || uploading || !(await persist())) return;
+	busy = true;
+	try {
+		const result = await request("/drafts", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				id: crypto.randomUUID(),
+				title: "",
+				body: "",
+				category: "",
+				tags: "",
+				...(target !== undefined
+					? { organization: { target, revision: organization.revision } }
+					: {}),
+			}),
+		});
+		if (result.organization) organization = result.organization;
+		remember(result.draft);
+		filter = "draft";
+		search = "";
+		open(result.draft);
+	} catch (e) {
+		toast(e.message);
+		if (e.status === 409 || e.status === 404) {
+			try {
+				organization = (await request("/organization")).organization;
+			} catch {}
+		}
+	} finally {
+		busy = false;
+	}
+}
+async function duplicateDraft(article) {
+	if (busy || loading) return;
+	busy = true;
+	try {
+		const { draft } = await request("/drafts/" + article.id + "/duplicate", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				id: crypto.randomUUID(),
+				revision: article.revision,
+			}),
+		});
+		remember(draft);
+		open(draft);
+		toast("已复制为独立草稿，原草稿保持不变。");
+	} catch (e) {
+		toast(e.message);
+	} finally {
+		busy = false;
+	}
+}
+function confirmAction(article, action) {
+	if (busy) return;
+	pendingAction = { article, action };
+	dialog = "draft-action";
+}
+async function manageDraft(article, action) {
+	if (busy) return;
+	busy = true;
+	try {
+		const { draft } = await request("/drafts/" + article.id + "/" + action, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ revision: article.revision }),
+		});
+		drafts = drafts.filter((d) => d.id !== article.id);
+		trash = trash.filter((d) => d.id !== article.id);
+		if (draft) {
+			if (draft.deletedAt) trash = [normalize(draft), ...trash];
+			else remember(draft);
+		}
+		clearRecovery(article.id);
+		dialog = "";
+		pendingAction = null;
+		toast(
+			action === "trash"
+				? "已移入回收站，可随时恢复。"
+				: action === "restore"
+					? "草稿已恢复。"
+					: "草稿已彻底删除。",
+		);
+	} catch (e) {
+		toast(e.message);
+		if (e.status === 409 || e.status === 404) {
+			try {
+				await refreshDrafts();
+				dialog = "";
+				pendingAction = null;
+			} catch {}
+		}
+	} finally {
+		busy = false;
+	}
+}
+async function persist() {
+	clearTimeout(timer);
+	if (saveTask) return saveTask;
+	if (!current || !dirty) return true;
+	if (conflict) return false;
+	saveTask = (async () => {
+		saving = true;
+		saveError = "";
+		try {
+			while (dirty) {
+				const snapshot = { ...current };
+				const version = editVersion;
+				saved = "正在保存到" + storageLabel + "…";
+				const { draft } = await request("/drafts/" + snapshot.id, {
+					method: "PUT",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(payload(snapshot)),
+				});
+				current = {
+					...current,
+					revision: draft.revision,
+					assets: draft.assets,
+					updatedAt: draft.updatedAt,
+				};
+				remember(draft);
+				if (editVersion === version) {
+					dirty = false;
+					clearRecovery(current.id);
+					saved =
+						"已保存到" +
+						storageLabel +
+						" · " +
+						new Date(draft.updatedAt).toLocaleTimeString("zh-CN");
+				} else backupLocal();
+			}
+			return true;
+		} catch (e) {
+			conflict = e.status === 409;
+			saveError = e.message || "保存失败，请检查服务后重试";
+			saved = conflict ? "版本冲突 · 尚未保存" : "保存失败 · 修改仍在当前页面";
+			backupLocal();
+			return false;
+		} finally {
+			saving = false;
+		}
+	})();
+	const result = await saveTask;
+	saveTask = null;
+	return result;
+}
+function changed() {
+	dirty = true;
+	editVersion++;
+	saved = "有修改，等待保存…";
+	queueMicrotask(backupLocal);
+	clearTimeout(timer);
+	if (!conflict) timer = setTimeout(persist, 600);
+}
+async function home() {
+	if (busy) return;
+	if (uploading) {
+		toast("图片正在保存，请稍候。");
+		return;
+	}
+	if (await persist()) {
+		screen = "home";
+		current = null;
+		address(null);
+	}
+}
+function category(p) {
+	return p === "."
+		? ""
+		: p
+				.replace(/^AI Infra/, "AI infra")
+				.replace(/\/tilelang-puzzles$/, "/TileLang Puzzles");
+}
+async function importNote() {
+	if (!selected || busy || uploading) return;
+	if (!(await persist())) {
+		dialog = "";
+		return;
+	}
+	const match = items.find(
+		(a) =>
+			a.noteId === selected.id ||
+			a.id === sourcePairs[selected.id] ||
+			(a.source?.root === "blog" && a.source.path === sourcePairs[selected.id]),
+	);
+	if (match) {
+		dialog = "";
+		await edit(match);
+		return;
+	}
+	busy = true;
+	try {
+		const draft = (
+			await request("/drafts", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					id: crypto.randomUUID(),
+					title: selected.title,
+					body: selected.body,
+					category: category(selected.folder),
+					tags: "",
+					source: { root: "notes", path: selected.path },
+				}),
+			})
+		).draft;
+		remember(draft);
+		open(draft);
+		dialog = "";
+		toast("笔记和引用图片已保存到" + storageLabel + "草稿。");
+	} catch (e) {
+		toast(e.message);
+	} finally {
+		busy = false;
+	}
+}
+async function saveCopy() {
+	if (busy) return;
+	busy = true;
+	try {
+		const { draft } = await request("/drafts", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				...payload(current),
+				id: crypto.randomUUID(),
+				title: (current.title || "未命名文章") + "（冲突副本）",
+				copyFrom: current.id,
+			}),
+		});
+		clearRecovery(current.id);
+		remember(draft);
+		open(draft);
+		toast("你的修改已另存为新草稿，原草稿未被覆盖。");
+	} catch (e) {
+		toast(e.message);
+	} finally {
+		busy = false;
+	}
+}
+function showImport() {
+	if (busy || uploading) return;
+	noteQuery = "";
+	folder = "all";
+	selected = notes.find((n) => n.id.includes("Puzzle 01")) || notes[0];
+	dialog = "import";
+}
+function exportFile() {
+	const text =
+		"---\ntitle: " +
+		JSON.stringify(current.title || "未命名文章") +
+		"\ncategory: " +
+		JSON.stringify(current.category) +
+		"\ntags: " +
+		JSON.stringify(
+			current.tags
+				.split(/[,，]/)
+				.map((x) => x.trim())
+				.filter(Boolean),
+		) +
+		"\npublished: " +
+		new Date().toISOString().slice(0, 10) +
+		"\ndraft: true\n---\n\n" +
+		current.body;
+	const url = URL.createObjectURL(
+		new Blob([text], { type: "text/markdown;charset=utf-8" }),
+	);
+	const a = document.createElement("a");
+	a.href = url;
+	a.download =
+		(current.title || "未命名文章").replace(/[\\/:*?"<>|]/g, "-") + ".md";
+	a.click();
+	URL.revokeObjectURL(url);
+	toast("正文已导出，图片保存在" + storageLabel + "草稿库中。");
+}
+async function publish() {
+	if (busy || uploading || publishing) return;
+	if (!(await persist())) return;
+	dialog = "publish";
+	publishError = "";
+	publishConsent = false;
+	publishInfo = null;
+	publication = null;
+	publishing = true;
+	try {
+		publishInfo = await request("/drafts/" + current.id + "/publication");
+		publishFilename =
+			publishInfo.filename || (publishInfo.path || "").split("/").at(-1);
+		publishDescription = publishInfo.description || "";
+		publishDate = publishInfo.published || "";
+		publication = publishInfo.latest;
+		if (
+			publication?.state === "ready" &&
+			publication.revision !== current.revision
+		)
+			publication = null;
+		pollPublication();
+	} catch (e) {
+		publishError = e.message;
+	} finally {
+		publishing = false;
+	}
+}
+function resetPublication() {
+	publication = null;
+	publishConsent = false;
+	publishError = "";
+	clearTimeout(publishTimer);
+}
+function stylePublicationPreview(event) {
+	const doc = event.currentTarget.contentDocument;
+	if (!doc) return;
+	const page = document.documentElement;
+	const preview = doc.documentElement;
+	preview.style.setProperty(
+		"--hue",
+		getComputedStyle(page).getPropertyValue("--hue"),
+	);
+	preview.classList.toggle("dark", page.classList.contains("dark"));
+	preview.setAttribute(
+		"data-theme",
+		(page.classList.contains("dark")
+			? preview.dataset.darkTheme
+			: preview.dataset.lightTheme) ||
+			page.getAttribute("data-theme") ||
+			"light",
+	);
+	const heading = doc.querySelector("main h1");
+	if (heading && !preview.dataset.lightTheme) {
+		heading.style.scrollMarginTop = "6rem";
+		heading.scrollIntoView({ block: "start" });
+	}
+}
+function pollPublication(
+	delay = publication?.state === "publishing" ? 1500 : 400,
+) {
+	clearTimeout(publishTimer);
+	if (
+		!publication ||
+		!["building", "publishing"].includes(publication.state) ||
+		dialog !== "publish"
+	)
+		return;
+	const id = publication.id;
+	publishTimer = setTimeout(async () => {
+		try {
+			const result = await request("/publications/" + id);
+			if (publication?.id === id) {
+				publication = result.publication;
+				publishError = "";
+				if (publication.state === "published") {
+					await refreshDrafts();
+					{
+						const catalog = await request("/catalog");
+						articles = catalog.articles;
+					}
+					organization = (await request("/organization")).organization;
+					const fresh = drafts.find((d) => d.id === current?.id);
+					if (fresh)
+						current = {
+							...current,
+							publication: fresh.publication,
+							status: fresh.status,
+						};
+				}
+				pollPublication();
+			}
+		} catch (e) {
+			if (publication?.id === id) {
+				publishError =
+					e.status === 401
+						? "登录已过期，请重新登录后查看任务。"
+						: "暂时无法获取进度，后台任务仍会继续，正在重试连接…";
+				if (e.status !== 401) pollPublication(5000);
+			}
+		}
+	}, delay);
+}
+async function preparePublication() {
+	publishing = true;
+	publishError = "";
+	publishConsent = false;
+	try {
+		if (!(await persist())) return;
+		publication = (
+			await request("/drafts/" + current.id + "/publication", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					revision: current.revision,
+					filename: publishFilename,
+					organizationRevision: publishInfo.organizationRevision,
+					description: publishDescription,
+					published: publishDate,
+				}),
+			})
+		).publication;
+		pollPublication();
+	} catch (e) {
+		publishError = e.message;
+	} finally {
+		publishing = false;
+	}
+}
+async function confirmPublication() {
+	if (!publishConsent && publication?.state !== "retry") return;
+	publishing = true;
+	publishError = "";
+	try {
+		publication = (
+			await request("/publications/" + publication.id, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ revision: publication.revision, confirm: true }),
+			})
+		).publication;
+		pollPublication();
+	} catch (e) {
+		publishError = e.message;
+	} finally {
+		publishing = false;
+	}
+}
+async function uploadImage(file) {
+	if (!current || busy) throw new Error("当前文章暂时无法上传图片");
+	const result = await request("/media", {
+		method: "POST",
+		headers: { "Content-Type": file.type || "application/octet-stream" },
+		body: file,
+	});
+	return result.url;
+}
+async function reauthenticate() {
+	try {
+		account = (await request("/session")).user;
+		authNeeded = false;
+		await persist();
+	} catch (e) {
+		toast("请先在新窗口完成 GitHub 登录，再重试。");
+	}
+}
+async function logout() {
+	if (uploading || busy || !(await persist())) return;
+	try {
+		await request("/logout", { method: "POST" });
+		for (const key of Object.keys(sessionStorage))
+			if (key.startsWith("wonder-draft-recovery:"))
+				sessionStorage.removeItem(key);
+		current = null;
+		drafts = [];
+		notes = [];
+		articles = [];
+		account = null;
+		dialog = "";
+		location.assign("/studio/");
+	} catch (e) {
+		toast(e.message);
+	}
+}
+function status(a) {
+	return a.publication
+		? a.publication.revision === a.revision
+			? "已发布"
+			: "已发布 · 有修改"
+		: a.persisted
+			? storageLabel + "草稿"
+			: a.status === "published"
+				? "已发布"
+				: "仓库草稿";
+}
+function imageSource(href, a) {
+	let src = a.assets?.[href] || href;
+	if (!/^(https?:|\/studio-api\/media\/)/i.test(src)) {
+		try {
+			const base = new URL("https://local/" + a.path);
+			const u = new URL(src, base);
+			src =
+				"/studio/assets/" +
+				(assetMap[a.root + "/" + decodeURIComponent(u.pathname.slice(1))] ||
+					"missing") +
+				"/";
+		} catch {
+			src = "";
+		}
+	}
+	if (/^\/studio-api\/media\/[a-f\d]{64}$/.test(src)) src += "/";
+	return src;
+}
+function markdown(raw, a) {
+	if (typeof document === "undefined") return "";
+	const renderer = new marked.Renderer();
+	renderer.image = ({ href, text }) => {
+		const src = imageSource(href, a);
+		return `<img src="${escapeHtml(src)}" alt="${escapeHtml(text || "")}" loading="eager">`;
+	};
+	const html = marked.parse(raw, { renderer, breaks: false });
+	const doc = new DOMParser().parseFromString(html, "text/html");
+	for (const el of doc.body.querySelectorAll("*")) {
+		if (
+			![
+				"P",
+				"BR",
+				"HR",
+				"H1",
+				"H2",
+				"H3",
+				"H4",
+				"H5",
+				"H6",
+				"UL",
+				"OL",
+				"LI",
+				"BLOCKQUOTE",
+				"PRE",
+				"CODE",
+				"STRONG",
+				"EM",
+				"DEL",
+				"A",
+				"IMG",
+				"TABLE",
+				"THEAD",
+				"TBODY",
+				"TR",
+				"TD",
+				"TH",
+				"INPUT",
+			].includes(el.tagName)
+		) {
+			el.replaceWith(document.createTextNode(el.textContent || ""));
+			continue;
+		}
+		for (const attr of [...el.attributes])
+			if (
+				![
+					"href",
+					"src",
+					"alt",
+					"title",
+					"class",
+					"type",
+					"checked",
+					"disabled",
+					"start",
+				].includes(attr.name)
+			)
+				el.removeAttribute(attr.name);
+		if (el.tagName === "A") {
+			if (!/^(https?:|mailto:|#|\/)/i.test(el.getAttribute("href") || ""))
+				el.removeAttribute("href");
+			el.setAttribute("target", "_blank");
+			el.setAttribute("rel", "noopener noreferrer");
+		}
+		if (
+			el.tagName === "IMG" &&
+			!/^(https?:|blob:|\/studio\/assets\/|\/studio-api\/media\/)/i.test(
+				el.getAttribute("src") || "",
+			)
+		)
+			el.removeAttribute("src");
+		if (el.tagName === "INPUT") {
+			el.setAttribute("disabled", "");
+			el.setAttribute("type", "checkbox");
+		}
+	}
+	const walker = document.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+	let nodes = [];
+	let n;
+	// biome-ignore lint/suspicious/noAssignInExpressions: Advance the DOM walker once per iteration.
+	while ((n = walker.nextNode()))
+		if (!n.parentElement.closest("code,pre")) nodes.push(n);
+	for (const node of nodes) {
+		const text = node.textContent;
+		const regex = /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g;
+		let m;
+		let last = 0;
+		let frag = document.createDocumentFragment();
+		// biome-ignore lint/suspicious/noAssignInExpressions: exec advances this global regex and retains each match.
+		while ((m = regex.exec(text))) {
+			frag.append(text.slice(last, m.index));
+			let span = document.createElement("span");
+			span.innerHTML = katex.renderToString(m[1] || m[2], {
+				displayMode: !!m[1],
+				throwOnError: false,
+				trust: false,
+			});
+			frag.append(span);
+			last = regex.lastIndex;
+		}
+		if (last) {
+			frag.append(text.slice(last));
+			node.replaceWith(frag);
+		}
+	}
+	return doc.body.innerHTML;
+}
+function escapeHtml(s) {
+	return s.replace(
+		/[&<>"']/g,
+		(c) =>
+			({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+				c
+			],
+	);
+}
 </script>
 
 <svelte:window on:keydown={keydown}/>
+{#if archiveDialog}<PublicArchiveDialog onJob={trackArchive} {request} getOrganization={readOrganization} onClose={()=>archiveDialog=false}/>{/if}
 {#if serverMode&&!account}
 <section class="login-panel card-base">
   <div class="eyebrow">wonder · 写作空间</div>
@@ -264,10 +1149,8 @@
 </section>
 {:else}
 <div class="app">
-  <nav class="studio-nav card-base" aria-label="写作导航">
-    <button class:active={screen==='home'&&filter==='all'} on:click={async()=>{await home();filter='all';}}>▤ 全部文章 <em>{items.length}</em></button>
-    <button class:active={screen==='home'&&filter==='draft'} on:click={async()=>{await home();filter='draft';}}>◷ 草稿 <em>{draftCount}</em></button>
-    <button class:active={screen==='home'&&filter==='published'} on:click={async()=>{await home();filter='published';}}>◎ 已发布</button>
+  <nav inert={organizationPanelOpen||organizationBusy} class="studio-nav card-base" aria-label="写作导航">
+    <button class:active={screen==='home'&&filter!=='trash'} on:click={async()=>{await home();if(filter==='trash')filter='all';}}>▤ 文章工作台 <em>{items.length}</em></button>
     <button class:active={screen==='home'&&filter==='trash'} on:click={async()=>{await home();filter='trash';}}>♲ 回收站 <em>{trash.length}</em></button>
     <button on:click={showImport}>⌘ 笔记库 <em>{notes.length}</em></button>
     <button class="account" on:click={()=>dialog='account'}>{serverMode?account?.login:'本机写作'}</button>
@@ -278,9 +1161,9 @@
     {#if loading}<p class="empty">正在读取草稿…</p>{/if}
     {#if authNeeded&&!current}<div class="save-error" role="alert">登录已失效。<a data-auth-link data-no-swup href="/studio-auth/login/">重新使用 GitHub 登录</a></div>{/if}
     {#if busy}<p class="empty" role="status">正在准备草稿并保存图片…</p>{/if}
-    {#if screen==='home'}
+    <ArticleWorkbench bind:moveOpen={organizationPanelOpen} {items} {organization} {organizationBusy} onMove={moveDirectory} onUndo={undoDirectory} onFolder={editDirectory} onPublishDirectory={()=>archiveDialog=true} bind:selection={workbenchSelection} bind:filter bind:search bind:sort {loading} {busy} active={screen==='home'&&filter!=='trash'} renderMarkdown={markdown} articleStatus={status} onEdit={edit} onCreate={create} onImport={showImport} onDuplicate={duplicateDraft} onTrash={article=>confirmAction(article,'trash')} onRefresh={async()=>{try{await refreshDrafts();{const catalog=await request('/catalog');articles=catalog.articles;notes=catalog.notes;assetMap=catalog.assetMap;}organization=(await request('/organization')).organization;toast('文章已刷新。');}catch(e){toast(e.message);}}}/>
+    {#if screen==='home'&&filter==='trash'}
       <section class="home">
-        <div class="welcome card-base"><div><div class="eyebrow">记录技术、生活与灵感</div><h1>把想法写成文字</h1><p>记录一个想法，或者接着上次的探索。</p></div><div class="welcome-actions"><button on:click={showImport}>⌘ 从笔记导入</button><button class="primary" disabled={loading||busy} on:click={create}>＋ 写文章</button></div></div>
         <div class="list-heading"><h2>{filter==='trash'?'回收站':'你的文章'} <span>{filter==='trash'?trash.length:items.length}</span></h2><label class="search">⌕ <input aria-label="搜索文章" placeholder="搜索标题、正文、分类、标签…" bind:value={search}/></label></div>
         <div class="tabs"><button class:selected={filter==='all'} on:click={()=>filter='all'}>全部文章</button><button class:selected={filter==='draft'} on:click={()=>filter='draft'}>草稿 <span>{draftCount}</span></button><button class:selected={filter==='published'} on:click={()=>filter='published'}>已发布</button><button class:selected={filter==='trash'} on:click={()=>filter='trash'}>回收站 <span>{trash.length}</span></button><div class="list-tools"><div class="sort-menu"><StudioMenu label="文章排序" value={sort} options={[{value:'updated',label:'最近修改'},{value:'created',label:'最近创建'},{value:'title',label:'标题排序'}]} onSelect={value=>sort=value}/></div><button disabled={loading||busy} on:click={async()=>{try{await refreshDrafts();toast('列表已刷新。');}catch(e){toast(e.message);}}}>刷新列表</button></div></div>
         {#if filter==='trash'}<p class="trash-hint">草稿会一直保留在回收站，直到你主动彻底删除。已发布的博客原文不受影响。</p>{/if}
@@ -305,9 +1188,9 @@
         </div>
         <footer>每一篇文章，都从一个小小的想法开始。<span>wonder · 写作空间</span></footer>
       </section>
-    {:else if current}
+    {:else if screen==='editor'&&current}
       <section class="editor card-base" class:focused use:editorPortal={focused}>
-        <div class="editor-top"><button class="quiet back-list" on:click={home}><Icon icon="material-symbols:arrow-back-rounded"/>文章列表</button><span class="save-status" role="status"><i></i>{uploading?'正在保存图片…':saved}</span><div class="editor-actions"><button aria-pressed={settingsOpen} on:click={()=>settingsOpen=!settingsOpen}><Icon icon="material-symbols:tune-rounded"/><span>文章设置</span></button><StudioMenu label="写作选项" options={[{value:'focus',label:focused?'退出专注':'专注写作'},{value:'export',label:'导出 Markdown'},{value:'save',label:saving?'保存中…':'立即保存',disabled:busy||saving||uploading||!dirty||!!conflict}]} onSelect={action=>{if(action==='focus')focused=!focused;else if(action==='export')exportFile();else if(!busy&&!saving&&!uploading&&dirty&&!conflict)persist();}}/><button class="primary publish-entry" on:click={publish}><Icon icon="material-symbols:visibility-outline-rounded"/>预览与发布</button></div></div>
+        <div class="editor-top"><button class="quiet back-list" on:click={home}><Icon icon="material-symbols:arrow-back-rounded"/>返回工作台</button><span class="save-status" role="status"><i></i>{uploading?'正在保存图片…':saved}</span><div class="editor-actions"><button aria-pressed={settingsOpen} on:click={toggleSettings}><Icon icon="material-symbols:tune-rounded"/><span>文章设置</span></button><StudioMenu label="写作选项" options={[{value:'focus',label:focused?'退出专注':'专注写作'},{value:'export',label:'导出 Markdown'},{value:'save',label:saving?'保存中…':'立即保存',disabled:busy||saving||uploading||!dirty||!!conflict}]} onSelect={action=>{if(action==='focus')focused=!focused;else if(action==='export')exportFile();else if(!busy&&!saving&&!uploading&&dirty&&!conflict)persist();}}/><button class="primary publish-entry" on:click={publish}><Icon icon="material-symbols:visibility-outline-rounded"/>预览与发布</button></div></div>
         {#if saveError}<div class="save-error" role="alert"><span>{saveError}</span>{#if authNeeded}<a data-auth-link data-no-swup href="/studio-auth/login/" target="_blank" rel="noopener noreferrer">在新窗口重新登录</a><button on:click={reauthenticate}>登录后重试保存</button>{:else if conflict}<button disabled={busy} on:click={saveCopy}>将我的修改另存为草稿</button>{:else}<button on:click={persist}>重试保存</button>{/if}<button on:click={exportFile}>导出当前正文</button></div>{/if}
         {#if authNeeded&&!saveError}<div class="save-error" role="alert">登录已失效，当前文字仍保留。<a data-auth-link data-no-swup href="/studio-auth/login/" target="_blank" rel="noopener noreferrer">在新窗口重新登录</a><button on:click={reauthenticate}>登录后继续</button></div>{/if}
         {#if recoveryWarning}<p class="save-error">{recoveryWarning}</p>{/if}
@@ -315,7 +1198,7 @@
         <div class="editor-layout" class:with-settings={settingsOpen}>
           <div class="writing-area">
             {#key current.id}<WritingEditor bind:this={bodyEditor} value={current.body} {preview} resolveImage={href=>imageSource(href,current)} disabled={busy} {uploading} onChange={text=>{current.body=text;changed();}} onUpload={uploadImage} onUploadState={active=>uploading=active}/>{/key}
-          </div>{#if settingsOpen}<aside class="properties"><h3>文章设置</h3><label>分类<input disabled={busy} placeholder="例如 AI infra/cuda" bind:value={current.category} on:input={changed}/></label><p>用 / 分隔层级，分类不会改变文章网址。</p><label>标签<input disabled={busy} placeholder="CUDA, GPU, 学习笔记" bind:value={current.tags} on:input={changed}/></label><div class="property-divider"></div><h4>保存与发布</h4><p>修改会自动保存到{storageLabel}，等待显示“已保存到{storageLabel}”后再离开。</p><div class="private-note">◈ 草稿与博客仓库分开保存<br/><span>自动保存保持私密，确认发布后才公开。</span></div><button class="wide" on:click={showImport}>⌘ 浏览我的笔记</button></aside>{/if}</div>
+          </div>{#if settingsOpen}<aside class="properties"><h3>文章设置</h3><CategoryPicker folders={organization?.folders||[]} value={currentLocation} disabled={busy||organizationBusy||categoriesLoading||!!categoriesError} onSelect={selectCategory}/>{#if categoriesLoading}<p role="status">正在更新目录…</p>{/if}{#if categoriesError}<div role="alert"><p>{categoriesError}</p><button on:click={refreshCategories}>重新加载目录</button></div>{/if}<label>标签<input disabled={busy} placeholder="CUDA, GPU, 学习笔记" bind:value={current.tags} on:input={changed}/></label><div class="property-divider"></div><h4>保存与发布</h4><p>修改会自动保存到{storageLabel}，等待显示“已保存到{storageLabel}”后再离开。</p><div class="private-note">◈ 草稿与博客仓库分开保存<br/><span>自动保存保持私密，确认发布后才公开。</span></div><button class="wide" on:click={showImport}>⌘ 浏览我的笔记</button></aside>{/if}</div>
       </section>
     {/if}
   </div>
@@ -333,7 +1216,7 @@
       {:else}
         <p class="modal-copy">先查看当前文章的排版、代码和图片。确认发布后生成正式发布内容，成功后更新博客。</p>
         <div class="publication-fields">
-          <label>文章路径<input aria-label="发布文章路径" bind:value={publishPath} disabled={publishing||['building','publishing','retry'].includes(publication?.state)||current.source?.root==='blog'||!!current.publication} on:input={resetPublication} placeholder="writing/my-first-post.md"/><small>目录与分类分别管理；发布后保持网址不变。</small></label>
+          <label>文件名<input aria-label="发布文件名" bind:value={publishFilename} disabled={publishing||['building','publishing','retry'].includes(publication?.state)||publishInfo.existing} on:input={resetPublication} placeholder="服务器加载 Codex.md"/><small>支持中文，与文章标题独立。所在目录由工作台或文章设置调整。</small><small>发布位置：{publishPath}</small><small>文章网址：{decodeURI(postUrl(routeFromPath(publishPath)))}</small>{#if publishInfo.currentPath&&publishInfo.currentPath!==publishPath}<small>原位置：{publishInfo.currentPath} · 本次发布同时移动文章，旧网址会跳转。</small>{/if}</label>
           <label>发布日期<input type="date" aria-label="发布日期" bind:value={publishDate} disabled={publishing||['building','publishing','retry'].includes(publication?.state)} on:input={resetPublication}/></label>
           <label class="publication-description">文章摘要<textarea aria-label="发布摘要" rows="2" maxlength="1000" bind:value={publishDescription} disabled={publishing||['building','publishing','retry'].includes(publication?.state)} on:input={resetPublication} placeholder="一句话介绍这篇文章（可选）"></textarea></label>
         </div>
@@ -345,7 +1228,7 @@
               <p class="publication-progress-copy">可以点“返回写作”继续编辑，任务会在后台运行；再次打开可查看进度。</p>
               {#if publication.elapsedMs>=60000}<p class="publication-progress-copy">本次等待较久，请勿重复生成。下方耗时记录可帮助定位慢在哪一步。</p>{/if}
             {:else if publication.state==='ready'}✓ {publication.previewOnly?'文章预览已就绪':'构建检查通过'} · 第 {publication.revision} 版 · {publication.imageCount} 张本地图片{#if publication.elapsedMs!=null} · {publication.reused?'已复用预览，':''}用时 {duration(publication.elapsedMs)}{/if}
-            {:else if publication.state==='publishing'}<strong>{publicationStages[publication.phase?.stage]||'正在提交并上线'}…</strong><p>完整构建可能需要几分钟；成功前原网站保持可用。</p>
+            {:else if publication.state==='publishing'}<strong>{publicationStages[publication.phase?.stage]||'正在提交并上线'}…</strong><p>正在同步已确认的正文和位置，完成后更新博客。</p>
             {:else if publication.state==='published'}✓ 已发布到博客 · 提交 {publication.commit.slice(0,8)}
             {:else}{publication.error}{/if}
           </div>
@@ -547,7 +1430,7 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
  .focused .editor-heading { padding:.4rem 0 .6rem; }
  .focused .title-input { font-size:1.3rem; }
  .focused .editor-layout.with-settings { grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; }
- .focused .properties { max-height:25vh; }
+ .focused .properties { max-height:min(45dvh,380px); }
 }
 
 .editor-top .back-list,.editor-actions>button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px}.editor-actions{align-items:center}.editor-actions>button:not(.primary){background:transparent;color:var(--content-meta);border-color:transparent}.editor-actions>button[aria-pressed=true],.editor-actions>button:not(.primary):hover{background:var(--btn-regular-bg);color:var(--btn-content)}.editor-actions .publish-entry{font-weight:600;padding-inline:16px}.save-status{margin-right:auto}

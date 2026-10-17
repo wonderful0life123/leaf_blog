@@ -3,6 +3,9 @@ import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { marked } from 'marked';
+import matter from 'gray-matter';
+import {articleIdentity,postUrl} from '../../src/lib/article-paths.mjs';
+import {seedOrganization,moveOrganization,editFolderOrganization,OrganizationError} from '../../src/lib/studio-organization.mjs';
 
 export class StoreError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -40,13 +43,23 @@ export function openStore({ dataDir, sourceRoots = {} }) {
     assets_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
   ); CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, mime TEXT NOT NULL, bytes BLOB NOT NULL);
   `);
-  // Additive migration; keep a complete pre-migration snapshot of existing data.
-  if(!db.prepare('PRAGMA table_info(drafts)').all().some(c=>c.name==='deleted_at')){
+  // One consistent snapshot before the additive v1/v2 -> v3 migration.
+  const needsTrash=!db.prepare('PRAGMA table_info(drafts)').all().some(c=>c.name==='deleted_at');
+  const needsBindings=!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='article_bindings'").get();
+  const needsOrganization=!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='organization'").get();
+  if(needsTrash||needsOrganization||needsBindings||!db.prepare('PRAGMA table_info(drafts)').all().some(c=>c.name==='article_id')){
     if(db.prepare('SELECT COUNT(*) n FROM drafts').get().n)backup();
-    db.exec('BEGIN IMMEDIATE; ALTER TABLE drafts ADD COLUMN deleted_at TEXT; PRAGMA user_version=2; COMMIT;');
+    transaction(()=>{
+      if(needsTrash)db.exec('ALTER TABLE drafts ADD COLUMN deleted_at TEXT');
+      if(needsOrganization)db.exec('CREATE TABLE organization (id INTEGER PRIMARY KEY CHECK(id=1), state_json TEXT NOT NULL, undo_json TEXT)');
+      if(needsBindings)db.exec('CREATE TABLE article_bindings (article_id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, route TEXT NOT NULL, hash TEXT NOT NULL, task TEXT, aliases_json TEXT NOT NULL)');
+      if(!db.prepare('PRAGMA table_info(drafts)').all().some(c=>c.name==='article_id')){db.exec('ALTER TABLE drafts ADD COLUMN article_id TEXT');for(const row of db.prepare('SELECT id FROM drafts').all())db.prepare('UPDATE drafts SET article_id=? WHERE id=?').run(randomUUID(),row.id);}
+      db.exec('PRAGMA user_version=4');
+    });
   }
   fs.chmodSync(filename,0o600);
   const decode = row => row ? ({id:row.id,revision:row.revision,title:row.title,body:row.body,category:row.category,tags:row.tags,
+    articleId:(row.source_json?JSON.parse(row.source_json).articleId:null)||row.article_id,
     source:row.source_json?JSON.parse(row.source_json):null,assets:JSON.parse(row.assets_json),createdAt:row.created_at,updatedAt:row.updated_at,deletedAt:row.deleted_at||null,status:'draft',persisted:true}) : null;
   function get(id) { if(!uuid.test(id)) fail(400,'无效的草稿编号'); const d=decode(db.prepare('SELECT * FROM drafts WHERE id=?').get(id));if(!d)fail(404,'草稿不存在');return d; }
   function transaction(fn) { db.exec('BEGIN IMMEDIATE');try { const r=fn();db.exec('COMMIT');return r; }catch(e){db.exec('ROLLBACK');throw e;} }
@@ -101,14 +114,73 @@ export function openStore({ dataDir, sourceRoots = {} }) {
     if(backedUpDay===day)return;
     const prefix='studio-'+day;
     const dir=path.join(dataDir,'backups');
-    if(db.prepare('SELECT COUNT(*) n FROM drafts').get().n===0)return;
+    if(db.prepare('SELECT COUNT(*) n FROM drafts').get().n===0&&!db.prepare('SELECT id FROM organization WHERE id=1').get())return;
     if(!fs.existsSync(dir)||!fs.readdirSync(dir).some(n=>n.startsWith(prefix)))backup();
     backedUpDay=day;
   }
   return {
     filename, get, backup,
+    bindings(){return db.prepare('SELECT * FROM article_bindings').all().map(r=>({articleId:r.article_id,path:r.path,route:r.route,hash:r.hash,task:r.task,aliases:JSON.parse(r.aliases_json)}));},
+    binding(draft){return this.bindings().find(b=>b.articleId===draft.articleId||b.path===draft.source?.path||b.aliases.includes(draft.source?.path));},
+    bindArticles(items){
+      const posts=items.filter(a=>!a.persisted&&a.root==='blog'&&a.status==='published'&&a.articleId&&a.sourceHash),known=new Set(this.bindings().map(b=>b.articleId));
+      for(const a of posts){
+        if(!known.has(a.articleId))db.prepare('INSERT INTO article_bindings(article_id,path,route,hash,aliases_json) VALUES(?,?,?,?,?)').run(a.articleId,a.path,a.route,a.sourceHash,'[]');
+        known.add(a.articleId);
+      }
+      const bindings=this.bindings(),byId=new Map(bindings.map(b=>[b.articleId,b])),byPath=new Map();
+      for(const b of bindings)for(const p of [b.path,...b.aliases])if(!byPath.has(p))byPath.set(p,b);
+      return items.map(a=>{const b=a.persisted?(byId.get(a.articleId)||byPath.get(a.source?.path)):null;return b?{...a,articleId:b.articleId,publication:{...(a.publication||{}),path:b.path,url:postUrl(b.route)}}:a;});
+    },
+    reconcilePublication(job){
+      beforeWrite();return transaction(()=>{
+        for(const item of job.bindings||[]){
+          const old=this.bindings().find(b=>b.articleId===item.articleId);
+          if(old?.task===job.id)continue;
+          const aliases=[...new Set([...(old?.aliases||[]),item.oldPath].filter(Boolean))];
+          db.prepare('INSERT INTO article_bindings(article_id,path,route,hash,task,aliases_json) VALUES(?,?,?,?,?,?) ON CONFLICT(article_id) DO UPDATE SET path=excluded.path,route=excluded.route,hash=excluded.hash,task=excluded.task,aliases_json=excluded.aliases_json').run(item.articleId,item.path,item.route,item.hash,job.id,JSON.stringify(aliases));
+          for(const row of db.prepare('SELECT * FROM drafts').all()){
+            const source=row.source_json?JSON.parse(row.source_json):null;
+            if(row.id!==item.draftId&&!(source?.root==='blog'&&(source.articleId===item.articleId||source.path===item.oldPath||aliases.includes(source.path))))continue;
+            const next={...source,root:'blog',path:item.path,articleId:item.articleId,baseHash:item.hash,referencePath:source?.referencePath||source?.path||item.path};
+            db.prepare('UPDATE drafts SET source_key=?,source_json=? WHERE id=?').run('blog:'+item.path,JSON.stringify(next),row.id);
+          }
+        }
+      });
+    },
+    organization(items){
+      const row=db.prepare('SELECT state_json FROM organization WHERE id=1').get();
+      return seedOrganization(row?JSON.parse(row.state_json):null,this.bindArticles(items));
+    },
+    moveOrganization(input,items){
+      beforeWrite();
+      return transaction(()=>{
+        const current=this.organization(items);
+        let next;try{next=moveOrganization(current,input,items);}catch(e){if(e instanceof OrganizationError)fail(e.status,e.message);throw e;}
+        next.undoToken=randomUUID();
+        db.prepare('INSERT INTO organization(id,state_json,undo_json) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET state_json=excluded.state_json,undo_json=excluded.undo_json').run(JSON.stringify(next),JSON.stringify(current));
+        return next;
+      });
+    },
+    editFolderOrganization(input,items){
+      beforeWrite();return transaction(()=>{
+        const current=this.organization(items);
+        let next;try{next=editFolderOrganization(current,input,items,'folder:'+randomUUID());}catch(e){if(e instanceof OrganizationError)fail(e.status,e.message);throw e;}
+        next.undoToken=randomUUID();
+        db.prepare('INSERT INTO organization(id,state_json,undo_json) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET state_json=excluded.state_json,undo_json=excluded.undo_json').run(JSON.stringify(next),JSON.stringify(current));
+        return next;
+      });
+    },
+    undoOrganization(input,items){
+      beforeWrite();return transaction(()=>{
+        const row=db.prepare('SELECT * FROM organization WHERE id=1').get(),current=this.organization(items);
+        if(!row?.undo_json||!input?.token||input.token!==current.undoToken||input.revision!==current.revision)fail(409,'目录已有新操作，不能撤销这次目录操作。');
+        const next=seedOrganization({...JSON.parse(row.undo_json),revision:current.revision+1,undoToken:null},items);
+        db.prepare('UPDATE organization SET state_json=?,undo_json=NULL WHERE id=1').run(JSON.stringify(next));return next;
+      });
+    },
     list({trash=false}={}){return db.prepare(`SELECT * FROM drafts WHERE deleted_at IS ${trash?'NOT ':''}NULL ORDER BY ${trash?'deleted_at':'updated_at'} DESC`).all().map(decode);},
-    create(input) {
+    create(input,items=[]) {
       const value=fields(input);const id=input.id||randomUUID();if(!uuid.test(id))fail(400,'无效的草稿编号');
       const source=input.source ? {...input.source} : null;
       if(source) { resolveSource(source); if(typeof source.root!=='string'||typeof source.path!=='string')fail(400,'来源无效'); }
@@ -117,9 +189,21 @@ export function openStore({ dataDir, sourceRoots = {} }) {
       return transaction(()=>{
         const existing=db.prepare('SELECT * FROM drafts WHERE id=? OR source_key=?').get(id,key);
         if(existing){if(existing.deleted_at)fail(409,'这篇草稿已在回收站，请先恢复后再打开或导入。');return decode(existing);}
+        let placement;
+        if(input.organization!==undefined){
+          if(source)fail(400,'导入文章不能在创建时覆盖目录。');
+          placement=this.organization(items);
+          if(input.organization?.revision!==placement.revision)fail(409,'目录已变化，请重新选择目录后创建文章。');
+          const target=input.organization.target;
+          if(target!==null&&!placement.folders.some(f=>f.id===target))fail(404,'目标目录不存在。');
+          placement.placements['draft:'+id]=target;placement.revision++;placement.undoToken=null;
+        }
+        if(source){source.referencePath=source.path;const b=this.bindings().find(b=>b.path===source.path);if(source.root==='blog')source.articleId=b?.articleId||articleIdentity(source.path,matter(fs.readFileSync(resolveSource(source).file,'utf8')).data);}
         if(source)source.baseHash=createHash('sha256').update(fs.readFileSync(resolveSource(source).file)).digest('hex');
         const assets=snapshotAssets(value.body,source,input.copyFrom?get(input.copyFrom).assets:{});const now=new Date().toISOString();
         db.prepare('INSERT INTO drafts(id,revision,title,body,category,tags,source_key,source_json,assets_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,1,value.title,value.body,value.category,value.tags,key,source?JSON.stringify(source):null,JSON.stringify(assets),now,now);
+        db.prepare('UPDATE drafts SET article_id=? WHERE id=?').run(source?.articleId||randomUUID(),id);
+        if(placement)db.prepare('INSERT INTO organization(id,state_json,undo_json) VALUES(1,?,NULL) ON CONFLICT(id) DO UPDATE SET state_json=excluded.state_json,undo_json=NULL').run(JSON.stringify(placement));
         return get(id);
       });
     },

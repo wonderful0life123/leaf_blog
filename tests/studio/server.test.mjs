@@ -164,3 +164,31 @@ for(const previewOnly of [false,true])test(`${previewOnly?'单篇':'旧版构建
  const css=await f.request(url+'/_astro/font.css',{headers:{Cookie:cookie}});assert.equal(css.status,200);assert.ok(css.text.includes(url+'/_astro/font.woff2'));assert.equal((await f.request(url+'/%2e%2e%2fjob.json',{headers:{Cookie:cookie}})).status,404);
  for(const resource of ['/posts/test/','/_astro/font.css'])assert.equal((await f.request(url+resource)).status,401,'已登录读取后匿名仍不可访问');
 });
+
+test('目录移动与撤销受登录、同源和版本保护，刷新及服务重启后保留',async t=>{
+ const f=await setup(t),cookie=await f.login(),headers={Cookie:cookie,Origin:f.config.origin};
+ fs.mkdirSync(path.join(f.root,'posts','目录'),{recursive:true});fs.writeFileSync(path.join(f.root,'posts','目录','文章.md'),'---\ntitle: 文章\n---\n原文');
+ for(const route of ['organization','organization/move','organization/undo'])assert.equal((await f.request('/studio-api/'+route+'/',{method:route==='organization'?'GET':'POST',headers:{Origin:f.config.origin},body:route==='organization'?undefined:{revision:0}})).status,401);
+ const organization=(await f.request('/studio-api/organization/',{headers})).data.organization;assert.equal(organization.revision,0);
+ const body={revision:0,kind:'article',id:'blog:目录/文章.md',target:null};
+ assert.equal((await f.request('/studio-api/organization/move/',{method:'POST',headers:{Cookie:cookie,Origin:'https://evil.test'},body})).status,403);
+ const moved=await f.request('/studio-api/organization/move/',{method:'POST',headers,body});assert.equal(moved.status,200);assert.equal(moved.data.organization.placements['article:legacy:目录/文章.md'],null);
+ assert.equal((await f.request('/studio-api/organization/move/',{method:'POST',headers,body})).status,409);
+ await f.restart();const fresh=await f.request('/studio-api/organization/',{headers});assert.match(fresh.headers['cache-control'],/no-store/);assert.equal(fresh.data.organization.revision,1);
+ const undo=await f.request('/studio-api/organization/undo/',{method:'POST',headers,body:{revision:1,token:moved.data.organization.undoToken}});assert.equal(undo.status,200);assert.equal(undo.data.organization.placements['article:legacy:目录/文章.md'],'folder:目录');
+ assert.equal(fs.readFileSync(path.join(f.root,'posts','目录','文章.md'),'utf8'),'---\ntitle: 文章\n---\n原文');
+});
+
+test('目录增删改接口保护与指定目录创建文章',async t=>{
+ const f=await setup(t),cookie=await f.login(),headers={Cookie:cookie,Origin:f.config.origin};
+ const url='/studio-api/organization/folders/',body={revision:0,action:'create',name:'工作台验收',parent:null};
+ assert.equal((await f.request(url,{method:'POST',headers:{Origin:f.config.origin},body})).status,401);
+ assert.equal((await f.request(url,{method:'POST',headers:{Cookie:cookie,Origin:'https://evil.test'},body})).status,403);
+ const created=await f.request(url,{method:'POST',headers,body});assert.equal(created.status,200);assert.match(created.headers['cache-control'],/no-store/);
+ const state=created.data.organization,target=state.folders.find(f=>f.name===body.name).id;
+ const response=await f.request('/studio-api/drafts/',{method:'POST',headers,body:{id:randomUUID(),title:'目录草稿',body:'内容',category:'',tags:'',organization:{target,revision:state.revision}}});assert.equal(response.status,201);
+ const result=response.data;assert.equal(result.organization.placements['draft:'+result.draft.id],target);
+ assert.equal((await f.request(url,{method:'POST',headers,body:{revision:result.organization.revision,action:'delete',id:target}})).status,409);
+ const renamed=await f.request(url,{method:'POST',headers,body:{revision:result.organization.revision,action:'rename',id:target,name:'已改名'}});assert.equal(renamed.status,200);
+ await f.restart();assert.equal((await f.request('/studio-api/organization/',{headers})).data.organization.folders.find(f=>f.id===target).name,'已改名');
+});

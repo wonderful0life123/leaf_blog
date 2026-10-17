@@ -2,16 +2,18 @@ import fs from "node:fs";
 import path from "node:path";
 import type { LiveLoader } from "astro/loaders";
 import { releaseContext } from "./context";
-let cachedPath = "",
-	cached: {
-		format: number;
-		codeRevision: string;
-		entries: Array<{
-			id: string;
-			data: Record<string, any>;
-			rendered: { html: string };
-		}>;
-	};
+
+let cachedPath = "";
+let cached: {
+	format: number;
+	codeRevision: string;
+	routes?: any;
+	entries: Array<{
+		id: string;
+		data: Record<string, any>;
+		rendered: { html: string };
+	}>;
+};
 export function currentRelease() {
 	const dir =
 		releaseContext.getStore() ||

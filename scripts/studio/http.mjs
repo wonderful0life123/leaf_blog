@@ -26,6 +26,11 @@ export function createHandler(store, {authorize, catalog, publications} = {}) {
         if(!req.headers['content-type']?.startsWith('application/json'))throw new StoreError(415,'需要 JSON 数据');
         try{return JSON.parse((await body(3*1024*1024)).toString());}catch(e){if(e instanceof StoreError)throw e;throw new StoreError(400,'JSON 格式无效');}
       }
+      if(pathname==='/organization/publication'){
+        if(!publications)throw new StoreError(503,'发布服务尚未配置');
+        if(method==='GET')return json(200,publications.organizationInfo());
+        if(method==='POST')return json(202,{publication:publications.prepareOrganization(await data(),[...(catalog?.scan().articles||[]),...publications.decorate(store.list())])});
+      }
       const publishInfo=pathname.match(/^\/drafts\/([^/]+)\/publication$/);
       if(publishInfo&&method==='GET')return json(200,publications?publications.info(publishInfo[1]):{available:false,enabled:false});
       if(publishInfo&&method==='POST'){
@@ -41,10 +46,22 @@ export function createHandler(store, {authorize, catalog, publications} = {}) {
         const resource=publications.preview(preview[1],relative);
         res.writeHead(200,{'Content-Type':resource.mime,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'SAMEORIGIN','Referrer-Policy':'no-referrer','Content-Security-Policy':"sandbox allow-same-origin; default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"});return res.end(resource.bytes);
       }
-      const decorate=draft=>publications?publications.decorate([draft])[0]:draft;
+      const decorateAll=drafts=>publications?publications.decorate(drafts):drafts;
+      const decorate=draft=>decorateAll([draft])[0];
+      if(['/organization','/organization/move','/organization/undo','/organization/folders'].includes(pathname)){
+        const entries=[...(catalog?.scan().articles||[]),...decorateAll(store.list())];
+        if(pathname==='/organization'&&method==='GET')return json(200,{organization:store.organization(entries)});
+        if(pathname==='/organization/move'&&method==='POST')return json(200,{organization:store.moveOrganization(await data(),entries)});
+        if(pathname==='/organization/folders'&&method==='POST')return json(200,{organization:store.editFolderOrganization(await data(),[...entries,...decorateAll(store.list({trash:true}))])});
+        if(pathname==='/organization/undo'&&method==='POST')return json(200,{organization:store.undoOrganization(await data(),entries)});
+      }
       if(pathname==='/catalog'&&method==='GET'&&catalog)return json(200,catalog.scan());
       if(pathname==='/drafts'&&method==='GET'){const drafts=store.list({trash:new URL(req.url,`http://${host}`).searchParams.get('state')==='trash'});return json(200,{drafts:publications?publications.decorate(drafts):drafts});}
-      if(pathname==='/drafts'&&method==='POST')return json(201,{draft:store.create(await data())});
+      if(pathname==='/drafts'&&method==='POST'){
+        const input=await data(),entries=input.organization!==undefined?[...(catalog?.scan().articles||[]),...decorateAll(store.list())]:[];
+        const draft=store.create(input,entries);
+        return json(201,{draft,...(input.organization!==undefined?{organization:store.organization([...entries,decorate(draft)])}:{})});
+      }
       const draft=pathname.match(/^\/drafts\/([^/]+)$/);
       if(draft&&method==='GET')return json(200,{draft:decorate(store.get(draft[1]))});
       if(draft&&method==='PUT')return json(200,{draft:decorate(store.update(draft[1],await data()))});

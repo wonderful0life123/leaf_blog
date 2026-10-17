@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import {ROUTES_FILE} from '../../src/lib/article-paths.mjs';
+import {ARCHIVE_FILE} from '../../src/lib/public-archive.mjs';
 import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -26,8 +28,8 @@ export function gitPublisher(config) {
       await run('git',['fetch','--no-tags','origin',config.branch]);const latest=await run('git',['rev-parse','FETCH_HEAD']);
       if(config.codeRevision){
         await run('git',['merge-base','--is-ancestor',config.codeRevision,latest]);
-        const changes=await run('git',['diff','--name-only',config.codeRevision,latest]);
-        if(changes.split('\n').some(file=>file&&!file.startsWith('src/content/posts/')))fail('发布分支包含尚未部署的代码改动，请先同步两套前端与发布基准版本。');
+        const changes=await run('git',['diff','--name-only','-z',config.codeRevision,latest]);
+        if(changes.split('\0').some(file=>file&&!file.startsWith('src/content/posts/')&&file!==ARCHIVE_FILE&&file!==ROUTES_FILE))fail('发布分支包含尚未部署的代码改动，请先同步两套前端与发布基准版本。');
       }
       return latest;
     }
@@ -49,17 +51,18 @@ export function gitPublisher(config) {
       await step('icons',()=>run(process.execPath,['scripts/generate-icons.js'],workspace));
       await step('site',()=>run(process.execPath,['node_modules/astro/bin/astro.mjs','build'],workspace));
       await step('search',()=>run(process.execPath,['node_modules/pagefind/lib/runner/bin.cjs','--site','dist'],workspace));
-      const dist=path.join(workspace,'dist'),article=path.join(dist,url,'index.html');
+      const dist=path.join(workspace,'dist'),article=path.join(dist,decodeURI(url),'index.html');
       if(!fs.existsSync(article)||fs.existsSync(path.join(dist,'studio-static')))fail('构建产物不完整或包含私有前端，已停止发布。');
       return dist;
     },
     async commit(workspace,base,files,id){
       // The temporary index includes only the checked article and referenced images.
+      if(files.some(f=>f!==ARCHIVE_FILE&&f!==ROUTES_FILE&&(!f.startsWith('src/content/posts/')||f.split('/').some(p=>!p||p==='.'||p==='..')||f.includes('\\'))))throw new StoreError(422,'提交文件范围无效');
       const gitDir=await run('git',['rev-parse','--absolute-git-dir']);
       const index=path.join(path.dirname(workspace),'git-index');
       const isolated={...env,GIT_DIR:gitDir,GIT_WORK_TREE:workspace,GIT_INDEX_FILE:index,GIT_AUTHOR_NAME:'Wonder Studio',GIT_AUTHOR_EMAIL:'studio@wonder-ai.info',GIT_COMMITTER_NAME:'Wonder Studio',GIT_COMMITTER_EMAIL:'studio@wonder-ai.info'};
       await run('git',['read-tree',base],workspace,{env:isolated});
-      await run('git',['add','--',...files],workspace,{env:isolated});
+      await run('git',['add','-A','--',...files],workspace,{env:isolated});
       const tree=await run('git',['write-tree'],workspace,{env:isolated});
       return run('git',['commit-tree',tree,'-p',base,'-m',`Publish article via Wonder Studio (${id})`],workspace,{env:isolated});
     },

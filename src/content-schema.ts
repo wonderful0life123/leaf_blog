@@ -1,6 +1,7 @@
 import { z } from "astro/zod";
 export const postSchema = z.object({
 	title: z.string(),
+	articleId: z.string().optional(),
 	published: z.date(),
 	updated: z.date().optional(),
 	draft: z.boolean().optional().default(false),

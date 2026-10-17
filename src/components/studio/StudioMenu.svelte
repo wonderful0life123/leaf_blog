@@ -1,35 +1,65 @@
 <script>
-  import {tick} from 'svelte';
-  import Icon from '../common/Icon.svelte';
-  export let label;
-  export let options = [];
-  export let value = undefined;
-  export let disabled = false;
-  export let compact = false;
-  export let toolbar = false;
-  export let align = 'right';
-  export let icon = '';
-  export let onSelect = () => {};
-  let open = false, root, trigger, panel;
-  async function show(last=false) {
-    open=true; await tick();
-    const buttons=[...(panel?.querySelectorAll('button:not(:disabled)')||[])];
-    const index=last ? buttons.length-1 : Math.max(0,buttons.findIndex(button=>button.getAttribute('aria-checked')==='true'));
-    buttons?.[index]?.focus();
-  }
-  function close(restore=false){open=false;if(restore)trigger?.focus();}
-  function outside(event){if(open&&!root?.contains(event.target))close();}
-  function navigate(event){
-    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close(true);return;}
-    const buttons=[...panel.querySelectorAll('button:not(:disabled)')];
-    const index=buttons.indexOf(document.activeElement);
-    const next={ArrowDown:(index+1)%buttons.length,ArrowUp:(index-1+buttons.length)%buttons.length,Home:0,End:buttons.length-1}[event.key];
-    if(next!==undefined){event.preventDefault();buttons[next]?.focus();}
-  }
+import { tick } from "svelte";
+import Icon from "../common/Icon.svelte";
+export let label;
+export let options = [];
+export let value = undefined;
+export let disabled = false;
+export let compact = false;
+export let toolbar = false;
+export let contained = false;
+export let align = "right";
+export let icon = "";
+export let onSelect = () => {};
+let open = false;
+let root;
+let trigger;
+let panel;
+async function show(last = false) {
+	open = true;
+	await tick();
+	const buttons = [...(panel?.querySelectorAll("button:not(:disabled)") || [])];
+	const index = last
+		? buttons.length - 1
+		: Math.max(
+				0,
+				buttons.findIndex(
+					(button) => button.getAttribute("aria-checked") === "true",
+				),
+			);
+	buttons?.[index]?.focus();
+}
+function close(restore = false) {
+	open = false;
+	if (restore) trigger?.focus();
+}
+function outside(event) {
+	if (open && !root?.contains(event.target)) close();
+}
+function navigate(event) {
+	if (event.key === "Escape") {
+		event.preventDefault();
+		event.stopPropagation();
+		close(true);
+		return;
+	}
+	const buttons = [...panel.querySelectorAll("button:not(:disabled)")];
+	const index = buttons.indexOf(document.activeElement);
+	const next = {
+		ArrowDown: (index + 1) % buttons.length,
+		ArrowUp: (index - 1 + buttons.length) % buttons.length,
+		Home: 0,
+		End: buttons.length - 1,
+	}[event.key];
+	if (next !== undefined) {
+		event.preventDefault();
+		buttons[next]?.focus();
+	}
+}
 </script>
 
 <svelte:window on:pointerdown={outside} on:focusin={outside}/>
-<div class="menu" class:toolbar class:left={align==='left'} bind:this={root}>
+<div class="menu" class:toolbar class:contained class:left={align==='left'} bind:this={root}>
   <button class="trigger" class:compact bind:this={trigger} {disabled} aria-label={label} aria-haspopup="menu" aria-expanded={open} on:click={()=>open?close():show()} on:keydown={event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();show(event.key==='ArrowUp');}}}>
     {#if icon}<Icon {icon}/>{/if}
     {#if compact}<span aria-hidden="true">···</span>{:else}<span>{options.find(option=>option.value===value)?.label||label}</span><span class="chevron" aria-hidden="true"><Icon icon="material-symbols:keyboard-arrow-down-rounded"/></span>{/if}
@@ -55,4 +85,5 @@ button:disabled{opacity:.5;cursor:default}button:focus-visible{outline:2px solid
 .panel button:hover,.panel button:focus-visible,.panel button.selected{background:var(--btn-regular-bg);color:var(--btn-content)}.check{width:1rem;color:var(--primary)}.panel button.danger{color:var(--admonitions-color-caution,#b83d45)}
 @media(max-width:700px){.trigger{min-height:42px}.panel button{min-height:44px}}
 .left .panel{left:0;right:auto}.toolbar .trigger{border-color:transparent;background:transparent;gap:5px;padding:6px 8px;min-height:34px}.toolbar .trigger:hover,.toolbar .trigger[aria-expanded=true]{background:var(--btn-regular-bg);color:var(--btn-content)}.toolbar .panel{max-height:min(360px,50dvh);overflow:auto}
+.contained .trigger{width:100%;justify-content:space-between;min-width:0;text-align:left}.contained .trigger>span:first-child{overflow-wrap:anywhere;min-width:0}.contained .panel{position:relative;top:auto;right:auto;margin-top:.35rem;min-width:0;max-height:220px;overflow:auto}.contained .panel button{white-space:normal;overflow-wrap:anywhere}
 </style>

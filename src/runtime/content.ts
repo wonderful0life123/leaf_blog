@@ -3,6 +3,8 @@ import {
 	getCollection,
 	getLiveCollection,
 } from "astro:content";
+import archive from "../data/public-archive.json";
+import { withArchivePath } from "../lib/public-archive.mjs";
 export type PublishedPost = CollectionEntry<"posts"> & {
 	data: CollectionEntry<"posts">["data"] & {
 		runtimeBody?: string;
@@ -18,13 +20,16 @@ export async function getPosts(
 		!import.meta.env.WONDER_RUNTIME_BUILD ||
 		process.env.WONDER_RUNTIME_COMPILING === "1"
 	)
-		return getCollection("posts", filter);
+		return (await getCollection("posts", filter)).map((entry) =>
+			withArchivePath(entry, archive),
+		);
 	const result = await getLiveCollection("published");
 	if (result.error) throw result.error;
 	const entries = result.entries!.map((entry) => ({
 		...entry,
 		body: entry.data.runtimeBody,
-		filePath: "src/content/posts/" + entry.id + ".md",
+		filePath:
+			"src/content/posts/" + (entry.data.sourcePath || entry.id + ".md"),
 	}));
 	return filter
 		? (entries as PublishedPost[]).filter(filter)

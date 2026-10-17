@@ -99,3 +99,11 @@ test('列表内未闭合围栏仍显示源码，代码标记不被渲染为正�
  const doc='1. 检查\n\n   ```md\n   **code**\n   $x$\n\n结尾';
  assert.ok(!rendered(stateFor(doc,{anchor:doc.length})).some(x=>['codeblock','math'].includes(x.item.kind)));
 });
+
+test('纯文本代码不被模糊匹配为 TeX，保留字面量与空白',async()=>{
+ const {codeSegments}=await import('../../src/components/studio/code-preview.mjs');
+ const code='  \\begin{matrix}\n<x> & y\n';
+ for(const language of ['text','txt','plaintext','plain','']){
+  assert.deepEqual(await codeSegments(code,language),[{text:code,classes:''}]);
+ }
+});
