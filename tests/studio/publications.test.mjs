@@ -9,6 +9,8 @@ import {openStore} from '../../scripts/studio/store.mjs';
 import {publicationContent,digest} from '../../scripts/studio/publication-content.mjs';
 import {openPublications,publicationConfig} from '../../scripts/studio/publications.mjs';
 import {gitPublisher} from '../../scripts/studio/publication-git.mjs';
+import {planArticleChanges} from '../../scripts/studio/article-changes.mjs';
+import {contentComparison} from '../../scripts/studio/article-status.mjs';
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV8sAAAAASUVORK5CYII=','base64');
 const input={path:'writing/test.md',description:'摘要',published:'2026-10-11'};
 function fixture(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'wonder-publish-'));const store=openStore({dataDir:path.join(root,'data')});t.after(()=>{store.close();fs.rmSync(root,{recursive:true,force:true});});const draft=store.create({title:'测试',body:'正文',category:'技术/CUDA',tags:'GPU, CUDA'});return {root,store,draft};}
@@ -21,13 +23,15 @@ function mockDriver(root){let head='base',pushes=0,deploys=0,failDeploy=false;re
  counts(){return {pushes,deploys};},changeHead(){head='other';},failDeploy(value){failDeploy=value;}
 };}
 test('发布内容保留元信息与普通引用链接，只转换真实图片，不改代码示例',t=>{
- const {store,draft}=fixture(t),image=store.upload(png);
+ const {root,store,draft}=fixture(t),image=store.upload(png);
  draft.body='`![图]('+image.url+')`\n\n![图]('+image.url+')\n\n![引用][pic]\n\n[普通链接][ref]\n\n[pic]: '+image.url+'\n[ref]: https://example.com\n\n```md\n![图]('+image.url+')\n```\n';
  const previous='---\ntitle: 旧标题\npublished: 2020-01-01\npinned: true\ncomment: false\ncustom: keep\n---\n旧正文';
  const result=publicationContent(draft,input,{previous,expectedHash:digest(previous),media:id=>store.media(id)}),parsed=matter(result.text);
  assert.equal(parsed.data.pinned,true);assert.equal(parsed.data.comment,false);assert.equal(parsed.data.custom,'keep');assert.equal(parsed.data.draft,false);assert.deepEqual(parsed.data.tags,['GPU','CUDA']);
  assert.ok(publicationContent({...draft,body:'```js\nimport React from \"react\";\nexport default React;\n```'},input,{media:id=>store.media(id)}).text.includes('import React'));
  assert.equal(result.images.length,1);assert.match(parsed.content,/assets\/test\/[a-f\d]{64}\.png/);assert.ok(parsed.content.includes('`![图]('+image.url+')`'));assert.ok(parsed.content.includes('[ref]: https://example.com'));assert.ok(parsed.content.includes('```md\n![图]('+image.url+')'));
+ const posts=path.join(root,'posts');for(const image of result.images){const file=path.join(posts,image.path);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,image.bytes);}
+ assert.equal(contentComparison(posts,[])(draft,{...draft,path:result.path,body:parsed.content}),false,'发布转换图片语法后仍应识别为相同内容');
 });
 test('发布拒绝路径穿越、覆盖冲突、空文章、原始 HTML、无效日期与丢失图片',t=>{
  const {draft,store}=fixture(t);const convert=(d=draft,i=input,opts={})=>publicationContent(d,i,{media:id=>store.media(id),...opts});
@@ -183,4 +187,33 @@ test('仓库未发布 Markdown 导入仍为草稿，明确预览才准备首次�
  assert.equal(store.binding(draft),undefined);assert.equal(manager.decorate([draft])[0].publication,undefined);
  const task=manager.prepare(draft.id,{...input,filename:'草稿.md',revision:1});const result=await settled(manager,task.id);assert.equal(result.state,'ready',result.error);
  const text=fs.readFileSync(path.join(root,'data/publications',task.id,'work/src/content/posts/草稿.md'),'utf8');assert.equal(matter(text).data.draft,false);assert.equal(matter(text).data.articleId,'legacy:草稿.md');assert.equal(driver.counts().pushes,0);
+});
+
+test('已发布编辑副本及目录移动后按实际内容判断修改，撤回正文修改可清除状态',t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'wonder-status-'));
+ const posts=path.join(root,'repo/src/content/posts');fs.mkdirSync(path.join(posts,'旧目录'),{recursive:true});
+ const source='旧目录/资料.md',body='正文\n\n![图](图.png)\n\n[下载](图.png)\n\n[自己](资料.md)\n\n`![图](图.png)`';
+ fs.writeFileSync(path.join(posts,source),matter.stringify(body,{title:'资料',tags:['CUDA','GPU'],category:'旧目录'}));
+ fs.writeFileSync(path.join(posts,'旧目录/图.png'),png);
+ const sourceRoots={blog:posts},store=openStore({dataDir:path.join(root,'data'),sourceRoots});
+ t.after(()=>{store.close();fs.rmSync(root,{recursive:true,force:true});});
+ const manager=openPublications({dataDir:path.join(root,'data'),store,sourceRoots,config:{enabled:false,repoDir:path.join(root,'repo')}});
+ let draft=store.create({title:'资料',body,category:'旧目录',tags:'CUDA， GPU',source:{root:'blog',path:source}});
+ const state=()=>manager.decorate([store.get(draft.id)])[0];
+ assert.equal(state().status,'published','仅打开文章创建编辑副本不应标记有修改');
+ assert.equal(state().hasUnpublishedChanges,false);
+ // Match the real directory planner: move public content and references, keep private body intact.
+ const plan=planArticleChanges(path.join(root,'repo'),[{articleId:draft.articleId,oldPath:source,path:'新目录/资料.md'}]);
+ for(const w of plan.writes){const file=path.join(root,'repo',w.path);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,w.text);}
+ for(const file of plan.deletes)fs.unlinkSync(path.join(root,'repo',file));
+ store.reconcilePublication({id:'directory-test',bindings:plan.bindings});
+ assert.equal(state().status,'published','仅移动及图片链接改写不算正文修改');
+ draft=store.update(draft.id,{...store.get(draft.id),body:body+'\n真正修改'});
+ assert.equal(state().hasUnpublishedChanges,true);
+ draft=store.update(draft.id,{...draft,body});assert.equal(state().status,'published','恢复原文即清除提示，不能只看修订号');
+ draft=store.update(draft.id,{...draft,title:'新标题'});assert.equal(state().hasUnpublishedChanges,true);
+ draft=store.update(draft.id,{...draft,title:'资料',tags:'CUDA'});assert.equal(state().hasUnpublishedChanges,true);
+ const changedImage=store.upload(Buffer.concat([png,Buffer.from('changed')]));
+ draft=store.update(draft.id,{...draft,tags:'CUDA, GPU',body:body.replace('![图](图.png)','![图]('+changedImage.url+')')});
+ assert.equal(state().hasUnpublishedChanges,true,'图片不同不能当作一致');
 });

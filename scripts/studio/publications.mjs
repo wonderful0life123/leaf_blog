@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import {archiveManifest,ARCHIVE_FILE,validateArchive} from '../../src/lib/public-archive.mjs';
 import {seedOrganization,targetArticlePath} from '../../src/lib/studio-organization.mjs';
 import {createCatalog} from './catalog.mjs';
+import {contentComparison} from './article-status.mjs';
 import {planArticleChanges,readPublicInventory} from './article-changes.mjs';
 import {postUrl,routeFromPath,suggestedFilename} from '../../src/lib/article-paths.mjs';
 import path from 'node:path';
@@ -105,12 +106,17 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
       return view(job);
     },
     decorate(drafts){
-      const jobs=list();store.bindArticles(catalogItems());
+      const jobs=list(),items=catalogItems();store.bindArticles(items);
       const bindings=store.bindings(),byId=new Map(bindings.map(b=>[b.articleId,b])),byPath=new Map(),latestPublished=new Map();
+      const originals=new Map(items.filter(a=>a.status==='published').map(a=>[a.articleId,a]));
+      const hasChanges=contentComparison(currentPosts(),bindings);
       for(const b of bindings)for(const p of [b.path,...b.aliases])if(!byPath.has(p))byPath.set(p,b);
       for(const j of jobs)if(j.state==='published'&&!latestPublished.has(j.draftId))latestPublished.set(j.draftId,j);
       return drafts.map(draft=>{const binding=byId.get(draft.articleId)||byPath.get(draft.source?.path),published=latestPublished.get(draft.id);
-        return binding||published?{...draft,articleId:binding?.articleId||draft.source?.articleId,status:published?.revision===draft.revision?'published':'draft',publication:{revision:published?.revision,path:binding?.path||published.path,url:binding?postUrl(binding.route):published.url,commit:published?.commit}}:draft;
+        if(!binding&&!published)return draft;
+        const original=originals.get(binding?.articleId||draft.articleId);
+        const changed=original?hasChanges(draft,original):published?.revision!==draft.revision;
+        return {...draft,articleId:binding?.articleId||draft.source?.articleId,status:changed?'draft':'published',hasUnpublishedChanges:changed,publication:{revision:published?.revision,path:binding?.path||published.path,url:binding?postUrl(binding.route):published.url,commit:published?.commit}};
       });
     },
     info(draftId){

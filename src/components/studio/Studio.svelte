@@ -647,6 +647,9 @@ async function persist() {
 					revision: draft.revision,
 					assets: draft.assets,
 					updatedAt: draft.updatedAt,
+					status: draft.status,
+					publication: draft.publication,
+					hasUnpublishedChanges: draft.hasUnpublishedChanges,
 				};
 				remember(draft);
 				if (editVersion === version) {
@@ -891,6 +894,7 @@ function pollPublication(
 							...current,
 							publication: fresh.publication,
 							status: fresh.status,
+							hasUnpublishedChanges: fresh.hasUnpublishedChanges,
 						};
 				}
 				pollPublication();
@@ -988,10 +992,13 @@ async function logout() {
 	}
 }
 function status(a) {
+	if (a.publication && a === current && dirty) return "已发布 · 编辑中";
+	const hasChanges =
+		a.hasUnpublishedChanges ?? a.publication?.revision !== a.revision;
 	return a.publication
-		? a.publication.revision === a.revision
-			? "已发布"
-			: "已发布 · 有修改"
+		? hasChanges
+			? "已发布 · 有修改"
+			: "已发布"
 		: a.persisted
 			? storageLabel + "草稿"
 			: a.status === "published"

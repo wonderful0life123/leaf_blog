@@ -59,8 +59,8 @@ export function createHandler(store, {authorize, catalog, publications} = {}) {
       if(pathname==='/drafts'&&method==='GET'){const drafts=store.list({trash:new URL(req.url,`http://${host}`).searchParams.get('state')==='trash'});return json(200,{drafts:publications?publications.decorate(drafts):drafts});}
       if(pathname==='/drafts'&&method==='POST'){
         const input=await data(),entries=input.organization!==undefined?[...(catalog?.scan().articles||[]),...decorateAll(store.list())]:[];
-        const draft=store.create(input,entries);
-        return json(201,{draft,...(input.organization!==undefined?{organization:store.organization([...entries,decorate(draft)])}:{})});
+        const draft=decorate(store.create(input,entries));
+        return json(201,{draft,...(input.organization!==undefined?{organization:store.organization([...entries,draft])}:{})});
       }
       const draft=pathname.match(/^\/drafts\/([^/]+)$/);
       if(draft&&method==='GET')return json(200,{draft:decorate(store.get(draft[1]))});
