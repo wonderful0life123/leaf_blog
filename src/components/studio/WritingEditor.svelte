@@ -39,7 +39,7 @@
   $: if(view&&view.state.doc.toString()!==value)view.dispatch({changes:{from:0,to:view.state.doc.length,insert:value}});
   $: if(view)view.dispatch({effects:editable.reconfigure([EditorState.readOnly.of(disabled),EditorView.editable.of(!disabled)])});
   function theme(){return EditorView.theme({
-    '&':{height:'100%',color:'var(--studio-text)',backgroundColor:'var(--card-bg)',fontSize:prefs.fontSize+'px'},
+    '&':{height:'100%',color:'var(--studio-text)',backgroundColor:'var(--card-bg)',fontSize:'var(--writing-font)'},
     '&.cm-focused':{outline:'none'},
     '.cm-scroller':{overflow:'auto',fontFamily:mode==='live'?'inherit':'"JetBrains Mono Variable", ui-monospace, monospace',lineHeight:String(prefs.lineHeight)},
     '.cm-content':{maxWidth:prefs.wide?'none':'1040px',width:'100%',margin:'0 auto',padding:'28px clamp(18px, 4vw, 56px) 160px',minHeight:'100%'},
@@ -215,7 +215,7 @@
   });
 </script>
 
-<div class="writing-workbench" style={`--writing-font:${prefs.fontSize}px;--writing-leading:${prefs.lineHeight}`}>
+<div class="writing-workbench" style={`--writing-font:calc(${prefs.fontSize}px * var(--site-text-scale, 1));--writing-leading:${prefs.lineHeight}`}>
   <div class="writing-controls">
     <div class="view-modes" aria-label="编辑视图">
       <button class:chosen={mode==='live'} aria-pressed={mode==='live'} on:click={()=>setMode('live')}>即时渲染</button>

@@ -49,6 +49,30 @@ type OverlaySliderItem = {
 	onValueChange: (value: number) => void;
 };
 
+const textSizes = [90, 100, 110, 120];
+const textSizeKey = "wonder-site-text-size";
+let textSize = $state(100);
+function applyTextSize(value: number) {
+	textSize = textSizes.includes(value) ? value : 100;
+	document.documentElement.dataset.textSize = String(textSize);
+}
+function changeTextSize(value: number) {
+	applyTextSize(value);
+	try {
+		localStorage.setItem(textSizeKey, String(textSize));
+	} catch {}
+}
+onMount(() => {
+	applyTextSize(Number(document.documentElement.dataset.textSize));
+	const sync = (event: StorageEvent) => {
+		if (event.key === textSizeKey || event.key === null) {
+			applyTextSize(Number(event.newValue));
+		}
+	};
+	window.addEventListener("storage", sync);
+	return () => window.removeEventListener("storage", sync);
+});
+
 let hue = $state(getHue());
 const defaultHue = getDefaultHue();
 let wallpaperMode: WALLPAPER_MODE = $state(backgroundWallpaper.mode);
@@ -135,13 +159,6 @@ let bannerSettingsIsDefault = $derived(
 		(!isBannerCarouselSwitchable ||
 			bannerCarouselEnabled === defaultBannerCarouselEnabled),
 );
-const hasAnyContent =
-	showThemeColor ||
-	isWallpaperSwitchable ||
-	allowLayoutSwitch ||
-	hasBannerSettings ||
-	hasOverlaySettings;
-
 let overlaySliderItems = $derived<OverlaySliderItem[]>([
 	{
 		key: "opacity",
@@ -442,8 +459,16 @@ $effect(() => {
 });
 </script>
 
-{#if hasAnyContent}
 <div id="display-setting" class="float-panel float-panel-closed absolute transition-all w-80 right-4 px-4 py-2">
+    <section class="text-size-settings" aria-label="全站字号">
+        <div class="text-size-heading"><strong>全站字号</strong><button class="btn-regular" disabled={textSize === 100} onclick={() => changeTextSize(100)}>恢复默认</button></div>
+        <div class="text-size-options" role="group" aria-label="选择全站字号">
+            {#each textSizes as size}
+                <button class="btn-regular" class:chosen={textSize === size} aria-pressed={textSize === size} onclick={() => changeTextSize(size)}>{size}%</button>
+            {/each}
+        </div>
+        <p>仅影响当前浏览器的阅读显示，刷新后保留。</p>
+    </section>
     <!-- Theme Color Section -->
     {#if showThemeColor}
     <div class="mt-2 mb-2">
@@ -698,11 +723,45 @@ $effect(() => {
         </div>
     {/if}
 </div>
-{/if}
-
 
 <style lang="stylus">
+    .text-size-settings
+        padding .65rem 0 .85rem
+        border-bottom 1px solid var(--line-divider)
+        color var(--content-meta)
+        p
+            font-size .7rem
+            line-height 1.6
+            margin-top .5rem
+    .text-size-heading
+        display flex
+        align-items center
+        justify-content space-between
+        margin-bottom .65rem
+        strong
+            color var(--btn-content)
+            font-size 1rem
+        button
+            font-size .7rem
+            padding .2rem .5rem
+            border-radius .4rem
+        button:disabled
+            opacity .45
+    .text-size-options
+        display flex
+        gap .4rem
+        button
+            flex 1
+            padding .5rem .2rem
+            border-radius .4rem
+            font-size .8rem
+        button.chosen
+            box-shadow inset 0 0 0 2px var(--primary)
+            font-weight 700
     #display-setting
+        max-width calc(100vw - 2rem)
+        max-height calc(100dvh - 6rem)
+        overflow-y auto
         input[type="range"]
             -webkit-appearance none
             height 1.5rem

@@ -108,7 +108,7 @@ const siteLang = lang.replace("_", "-");
 ---
 
 <!doctype html>
-<html lang={siteLang} class="bg-(--page-bg) text-[14px] md:text-[16px]" data-wallpaper-mode={backgroundWallpaper.mode}>
+<html lang={siteLang} class="bg-(--page-bg) site-typography" data-wallpaper-mode={backgroundWallpaper.mode}>
   <head>
     <meta charset="UTF-8" />
     {siteConfig.analytics?.googleAnalyticsId && (
@@ -269,6 +269,17 @@ const siteLang = lang.replace("_", "-");
       </script>
     )}
 
+    <!-- Restore text size before paint, independently of other display preferences. -->
+    <script is:inline>
+      (() => {
+        let size = 100;
+        try {
+          const stored = Number(localStorage.getItem("wonder-site-text-size"));
+          if ([90, 100, 110, 120].includes(stored)) size = stored;
+        } catch {}
+        document.documentElement.dataset.textSize = String(size);
+      })();
+    </script>
     <!-- Set the theme before the page is rendered to avoid a flash -->
     <script
       is:inline

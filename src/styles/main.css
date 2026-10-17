@@ -49,6 +49,18 @@ html {
     scroll-behavior: smooth;
 }
 
+/* Preserve the existing mobile/desktop base sizes while scaling rem typography. */
+html.site-typography {
+    --site-text-scale: 1;
+    font-size: calc(87.5% * var(--site-text-scale));
+}
+html.site-typography[data-text-size="90"] { --site-text-scale: .9; }
+html.site-typography[data-text-size="110"] { --site-text-scale: 1.1; }
+html.site-typography[data-text-size="120"] { --site-text-scale: 1.2; }
+@media (min-width: 48rem) {
+    html.site-typography { font-size: calc(100% * var(--site-text-scale)); }
+}
+
 /* 页面顶部渐变高光效果 */
 .top-gradient-highlight {
     position: fixed;
