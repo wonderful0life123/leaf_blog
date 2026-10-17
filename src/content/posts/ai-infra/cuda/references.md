@@ -7,13 +7,13 @@ tags:
   - CUDA
   - GPU
   - AI infra
-category: ai-infra/telilang
+category: ai-infra/cuda
 draft: false
 sourceLink: >-
   https://github.com/wonderful0life123/obsidian_note/blob/main/AI%20Infra/cuda/%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99.md
 comment: true
 articleId: 'legacy:ai-infra/cuda/references.md'
-slug: ai-infra/telilang/references
+slug: ai-infra/cuda/references
 ---
 
 # CUDA 参考资料

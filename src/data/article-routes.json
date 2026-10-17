@@ -38,10 +38,10 @@
     },
     {
       "id": "legacy:ai-infra/cuda/references.md",
-      "path": "ai-infra/telilang/references.md",
-      "route": "ai-infra/telilang/references",
+      "path": "ai-infra/cuda/references.md",
+      "route": "ai-infra/cuda/references",
       "aliases": [
-        "ai-infra/cuda/references"
+        "ai-infra/telilang/references"
       ],
       "guidRoute": "ai-infra/cuda/references"
     },
