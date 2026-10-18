@@ -6,7 +6,10 @@ import { codeSegments } from "./code-preview.mjs";
 export function readingCode(node) {
 	let generation = 0;
 	let cleanups = [];
+	let observer;
 	function clear() {
+		observer?.disconnect();
+		observer = null;
 		for (const cleanup of cleanups) cleanup();
 		cleanups = [];
 	}
@@ -15,6 +18,21 @@ export function readingCode(node) {
 		clear();
 		await tick();
 		if (current !== generation) return;
+		const pending = new Map();
+		if (typeof IntersectionObserver !== "undefined") {
+			observer = new IntersectionObserver(
+				(entries) => {
+					if (current !== generation) return;
+					for (const entry of entries) {
+						if (!entry.isIntersecting) continue;
+						observer.unobserve(entry.target);
+						pending.get(entry.target)?.();
+						pending.delete(entry.target);
+					}
+				},
+				{ rootMargin: "300px" },
+			);
+		}
 		for (const pre of node.querySelectorAll("pre")) {
 			const code = pre.querySelector(":scope > code");
 			if (!code) continue;
@@ -81,17 +99,22 @@ export function readingCode(node) {
 				code.textContent = source;
 				frame.replaceWith(pre);
 			});
-			codeSegments(source, language).then((segments) => {
-				if (current !== generation || !frame.isConnected) return;
-				const fragment = document.createDocumentFragment();
-				for (const segment of segments) {
-					const span = document.createElement("span");
-					span.className = segment.classes;
-					span.textContent = segment.text;
-					fragment.append(span);
-				}
-				code.replaceChildren(fragment);
-			});
+			const highlight = () =>
+				codeSegments(source, language).then((segments) => {
+					if (current !== generation || !frame.isConnected) return;
+					const fragment = document.createDocumentFragment();
+					for (const segment of segments) {
+						const span = document.createElement("span");
+						span.className = segment.classes;
+						span.textContent = segment.text;
+						fragment.append(span);
+					}
+					code.replaceChildren(fragment);
+				});
+			if (observer) {
+				pending.set(frame, highlight);
+				observer.observe(frame);
+			} else highlight();
 		}
 	}
 	render();

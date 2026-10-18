@@ -3,9 +3,38 @@ import path from 'node:path';
 import {digest} from './publication-content.mjs';
 import {fromMarkdown} from 'mdast-util-from-markdown';
 
+// Cache syntax only. Resolve links, bindings and image hashes against the current
+// source on every comparison so a move or replaced image cannot leave stale status.
+export function createContentParser({maxEntries = 128, maxChars = 4_000_000} = {}) {
+  const entries = new Map();
+  let chars = 0;
+  return source => {
+    const hit = entries.get(source);
+    if (hit) {
+      entries.delete(source); entries.set(source, hit);
+      return hit.tree;
+    }
+    const tree = fromMarkdown(source);
+    function stripPositions(node) {
+      delete node.position;
+      for (const child of node.children || []) stripPositions(child);
+    }
+    stripPositions(tree);
+    const size = source.length + JSON.stringify(tree).length;
+    if (maxEntries > 0 && size <= maxChars) {
+      while (entries.size && (entries.size >= maxEntries || chars + size > maxChars)) {
+        const key = entries.keys().next().value;
+        chars -= entries.get(key).size; entries.delete(key);
+      }
+      entries.set(source, {tree, size}); chars += size;
+    }
+    return tree;
+  };
+}
+
 // Compare against the current published source, including legacy articles which
 // have never been published through Studio. Directory-owned category is excluded.
-export function contentComparison(postsRoot, bindings) {
+export function contentComparison(postsRoot, bindings, parseBody = fromMarkdown) {
   const imageHashes = new Map();
   const paths = new Map();
   for (const b of bindings) for (const p of [b.path, ...b.aliases]) paths.set(p, b);
@@ -44,7 +73,7 @@ export function contentComparison(postsRoot, bindings) {
   }
   const tags = value => String(value || '').split(/[,，]/).map(t => t.trim()).filter(Boolean);
   function body(article, base) {
-    const tree = fromMarkdown((article.body || '').replace(/\r\n/g, '\n').trim());
+    const tree = parseBody((article.body || '').replace(/\r\n/g, '\n').trim());
     const definitions = new Map();
     function collect(node) {
       if (node.type === 'definition' && !definitions.has(node.identifier)) definitions.set(node.identifier, node);
