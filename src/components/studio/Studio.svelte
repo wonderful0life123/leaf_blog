@@ -10,6 +10,7 @@ import Icon from "../common/Icon.svelte";
 import ArticleWorkbench from "./ArticleWorkbench.svelte";
 import { articleKey, mergeArticles } from "./article-workbench.mjs";
 import CategoryPicker from "./CategoryPicker.svelte";
+import { createMarkdownCache } from "./markdown-cache.mjs";
 import PublicArchiveDialog from "./PublicArchiveDialog.svelte";
 import StudioMenu from "./StudioMenu.svelte";
 import WritingEditor from "./WritingEditor.svelte";
@@ -168,7 +169,7 @@ $: found = notes.filter(
 		(n.title + " " + n.folder).toLowerCase().includes(noteQuery.toLowerCase()),
 );
 $: draftCount = items.filter((a) => a.status === "draft").length;
-$: preview = current ? markdown(current.body, current) : "";
+const cachedMarkdown = createMarkdownCache(renderMarkdown);
 $: notePreview = selected ? markdown(selected.body, selected) : "";
 function portal(node) {
 	document.body.appendChild(node);
@@ -647,6 +648,9 @@ async function persist() {
 					revision: draft.revision,
 					assets: draft.assets,
 					updatedAt: draft.updatedAt,
+					status: draft.status,
+					publication: draft.publication,
+					hasUnpublishedChanges: draft.hasUnpublishedChanges,
 				};
 				remember(draft);
 				if (editVersion === version) {
@@ -891,6 +895,7 @@ function pollPublication(
 							...current,
 							publication: fresh.publication,
 							status: fresh.status,
+							hasUnpublishedChanges: fresh.hasUnpublishedChanges,
 						};
 				}
 				pollPublication();
@@ -988,10 +993,13 @@ async function logout() {
 	}
 }
 function status(a) {
+	if (a.publication && a === current && dirty) return "已发布 · 编辑中";
+	const hasChanges =
+		a.hasUnpublishedChanges ?? a.publication?.revision !== a.revision;
 	return a.publication
-		? a.publication.revision === a.revision
-			? "已发布"
-			: "已发布 · 有修改"
+		? hasChanges
+			? "已发布 · 有修改"
+			: "已发布"
 		: a.persisted
 			? storageLabel + "草稿"
 			: a.status === "published"
@@ -1018,6 +1026,9 @@ function imageSource(href, a) {
 }
 function markdown(raw, a) {
 	if (typeof document === "undefined") return "";
+	return cachedMarkdown(raw, a, assetMap);
+}
+function renderMarkdown(raw, a) {
 	const renderer = new marked.Renderer();
 	renderer.image = ({ href, text }) => {
 		const src = imageSource(href, a);
@@ -1197,7 +1208,7 @@ function escapeHtml(s) {
         <div class="editor-heading"><div class="eyebrow">{current.noteId?'从笔记开始':'把想法写下来'} <span class="small-status">{status(current)}</span></div><input class="title-input" disabled={busy} aria-label="文章标题" placeholder="给这篇文章起个标题…" bind:value={current.title} on:input={changed}/>{#if current.noteId}<p class="source-line">⌘ {current.noteId} · {storageLabel}副本，不改动原笔记</p>{/if}</div>
         <div class="editor-layout" class:with-settings={settingsOpen}>
           <div class="writing-area">
-            {#key current.id}<WritingEditor bind:this={bodyEditor} value={current.body} {preview} resolveImage={href=>imageSource(href,current)} disabled={busy} {uploading} onChange={text=>{current.body=text;changed();}} onUpload={uploadImage} onUploadState={active=>uploading=active}/>{/key}
+            {#key current.id}<WritingEditor bind:this={bodyEditor} value={current.body} renderPreview={raw=>markdown(raw,current)} resolveImage={href=>imageSource(href,current)} disabled={busy} {uploading} onChange={text=>{current.body=text;changed();}} onUpload={uploadImage} onUploadState={active=>uploading=active}/>{/key}
           </div>{#if settingsOpen}<aside class="properties"><h3>文章设置</h3><CategoryPicker folders={organization?.folders||[]} value={currentLocation} disabled={busy||organizationBusy||categoriesLoading||!!categoriesError} onSelect={selectCategory}/>{#if categoriesLoading}<p role="status">正在更新目录…</p>{/if}{#if categoriesError}<div role="alert"><p>{categoriesError}</p><button on:click={refreshCategories}>重新加载目录</button></div>{/if}<label>标签<input disabled={busy} placeholder="CUDA, GPU, 学习笔记" bind:value={current.tags} on:input={changed}/></label><div class="property-divider"></div><h4>保存与发布</h4><p>修改会自动保存到{storageLabel}，等待显示“已保存到{storageLabel}”后再离开。</p><div class="private-note">◈ 草稿与博客仓库分开保存<br/><span>自动保存保持私密，确认发布后才公开。</span></div><button class="wide" on:click={showImport}>⌘ 浏览我的笔记</button></aside>{/if}</div>
       </section>
     {/if}

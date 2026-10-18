@@ -1,0 +1,18 @@
+{
+  "before": {
+    "html": 404865,
+    "htmlGzip": 86711,
+    "playerInline": 72018
+  },
+  "after": {
+    "html": 335184,
+    "htmlGzip": 72723,
+    "playerInline": 2337
+  },
+  "module": {
+    "file": "music-player-view.CKNI13C4.js",
+    "bytes": 20467,
+    "gzip": 4909,
+    "cacheControl": "public, max-age=31536000, immutable"
+  }
+}

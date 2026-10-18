@@ -192,3 +192,15 @@ test('目录增删改接口保护与指定目录创建文章',async t=>{
  const renamed=await f.request(url,{method:'POST',headers,body:{revision:result.organization.revision,action:'rename',id:target,name:'已改名'}});assert.equal(renamed.status,200);
  await f.restart();assert.equal((await f.request('/studio-api/organization/',{headers})).data.organization.folders.find(f=>f.id===target).name,'已改名');
 });
+
+test('打开已发布文章的创建响应即带正确状态，保存修改及恢复原文同步更新',async t=>{
+ const f=await setup(t),cookie=await f.login(),headers={Cookie:cookie,Origin:f.config.origin};
+ fs.writeFileSync(path.join(f.config.sourceRoots.blog,'status.md'),'---\ntitle: 状态验收\ntags: [CUDA]\n---\n正文');
+ const created=await f.request('/studio-api/drafts/',{method:'POST',headers,body:{title:'状态验收',body:'正文',category:'',tags:'CUDA',source:{root:'blog',path:'status.md'}}});
+ assert.equal(created.status,201);let draft=created.data.draft;
+ assert.equal(draft.status,'published');assert.equal(draft.hasUnpublishedChanges,false);
+ const save=body=>f.request('/studio-api/drafts/'+draft.id+'/',{method:'PUT',headers,body:{...draft,body}});
+ draft=(await save('修改正文')).data.draft;assert.equal(draft.hasUnpublishedChanges,true);
+ draft=(await save('正文')).data.draft;assert.equal(draft.status,'published');assert.equal(draft.hasUnpublishedChanges,false);
+ const listed=await f.request('/studio-api/drafts/',{headers});assert.equal(listed.data.drafts.find(d=>d.id===draft.id).status,'published');
+});

@@ -15,10 +15,11 @@
   import {tags} from '@lezer/highlight';
   import {outlineFor, formatEdit, imageEdit, writingPreferences, splitRatio, continueWriting, formatState} from './editor-tools.mjs';
   import {liveMarkdown,livePlan,safeLiveImage} from './live-markdown.mjs';
+  import {createPreviewQueue} from './preview-queue.mjs';
   import {imageAnchors,trackImage,forgetImage,imageTarget,replaceImage,imageMarkdown,imageUploads} from './image-workflow.mjs';
   export let resolveImage=href=>href;
   export let value='';
-  export let preview='';
+  export let renderPreview=()=>'';
   export let disabled=false;
   export let uploading=false;
   export let onChange=()=>{};
@@ -32,6 +33,15 @@
   let host,view,previewPane,panes;
   let verticalSplit=false,mobileOutline=false,dragPointer=null,dragStartRatio=50;
   let mode='live',preferencesOpen=false,prefs=writingPreferences(),language='python';
+  let preview='',previewMode='';
+  const previewQueue=createPreviewQueue(html=>{preview=html;});
+  $: if(view) updatePreview(mode,value,renderPreview);
+  function updatePreview(nextMode,text,render){
+    const entering=previewMode!==nextMode;
+    previewMode=nextMode;
+    if(nextMode!=='split'&&nextMode!=='preview'){previewQueue.cancel();preview='';return;}
+    previewQueue.update(()=>render(text),entering||nextMode==='preview');
+  }
   let activeFormats={},headings=[],active=0,line=1,column=1,canUndo=false,canRedo=false;
   const editable=new Compartment(),appearance=new Compartment(),rendering=new Compartment();
   const storageKey='wonder-writing-preferences-v1';
@@ -211,7 +221,7 @@
       })
     ]})});
     uploadQueue=imageUploads({getState:()=>view.state,dispatch:tr=>view.dispatch(tr),upload:file=>onUpload(file),onUpdate:jobs=>{uploadJobs=jobs;onUploadState(jobs.some(j=>['queued','uploading'].includes(j.state)));}});
-    position();return()=>{uploadQueue.close();onUploadState(false);splitMedia.removeEventListener('change',updateOrientation);view.destroy();view=null;};
+    position();return()=>{previewQueue.cancel();uploadQueue.close();onUploadState(false);splitMedia.removeEventListener('change',updateOrientation);view.destroy();view=null;};
   });
 </script>
 

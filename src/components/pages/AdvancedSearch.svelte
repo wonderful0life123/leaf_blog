@@ -2,6 +2,7 @@
 import I18nKey from "@i18n/i18nKey";
 import { i18n } from "@i18n/translation";
 import { onMount } from "svelte";
+import { searchArticles } from "@/utils/search-client.mjs";
 import Icon from "@/components/common/Icon.svelte";
 import type { SearchResult } from "@/global";
 import { url as formatUrl } from "@/utils/url-utils";
@@ -14,7 +15,7 @@ export let description = "";
 let keyword = "";
 let results: SearchResult[] = [];
 let isSearching = false;
-let initialized = false;
+let requestVersion = 0;
 
 // 在客户端获取 URL 参数
 const getInitialKeyword = (): string => {
@@ -40,20 +41,19 @@ const fakeResult: SearchResult[] = [
 ];
 
 // --- Core Search Logic ---
-const search = async () => {
-	if (!initialized || !keyword.trim()) {
+const search = async (version = ++requestVersion) => {
+	if (!keyword.trim()) {
+		isSearching = false;
 		results = [];
 		return;
 	}
 	isSearching = true;
 
 	try {
-		if (import.meta.env.PROD && window.pagefind) {
-			const response = await window.pagefind.search(keyword);
-			const rawResults = await Promise.all(
-				response.results.map((item) => item.data()),
-			);
-			results = rawResults;
+		if (import.meta.env.PROD) {
+			const response = await searchArticles(keyword);
+			if (version !== requestVersion) return;
+			results = response.results;
 		} else if (import.meta.env.DEV) {
 			// 开发模式下的模拟结果
 			results = fakeResult.filter(
@@ -63,51 +63,35 @@ const search = async () => {
 			);
 		}
 	} catch (error) {
+		if (version !== requestVersion) return;
 		console.error("Search error:", error);
 		results = [];
 	} finally {
-		isSearching = false;
+		if (version === requestVersion) isSearching = false;
 	}
 };
 
-// --- Initialization onMount ---
+let debounceTimer: ReturnType<typeof setTimeout>;
 onMount(() => {
-	const initialize = async () => {
-		initialized = true;
-
-		// 从 URL 获取初始关键词
-		const initialKeyword = getInitialKeyword();
-		if (initialKeyword) {
-			keyword = initialKeyword;
-		}
-
-		// 如果有关键词，自动执行搜索
-		if (keyword.trim()) {
-			await search();
-		}
+	keyword = getInitialKeyword();
+	if (keyword.trim()) search();
+	return () => {
+		requestVersion++;
+		clearTimeout(debounceTimer);
 	};
-
-	// 开发环境直接初始化
-	if (import.meta.env.DEV) {
-		initialize();
-	} else {
-		// 生产环境等待 Pagefind 加载
-		if (window.pagefind) {
-			initialize();
-		} else {
-			document.addEventListener("pagefindready", initialize, {
-				once: true,
-			});
-		}
-	}
 });
 
-let debounceTimer: NodeJS.Timeout;
-const handleInput = () => {
+const handleInput = (event: Event) => {
+	keyword = (event.currentTarget as HTMLInputElement).value;
 	clearTimeout(debounceTimer);
-	debounceTimer = setTimeout(() => {
-		search();
-	}, 300);
+	const version = ++requestVersion;
+	if (!keyword.trim()) {
+		results = [];
+		isSearching = false;
+		return;
+	}
+	isSearching = true;
+	debounceTimer = setTimeout(() => search(version), 300);
 };
 </script>
 

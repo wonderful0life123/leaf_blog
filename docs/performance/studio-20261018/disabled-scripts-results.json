@@ -1,0 +1,68 @@
+[
+  {
+    "name": "home",
+    "path": "/",
+    "before": {
+      "htmlBytes": 335184,
+      "gzipBytes": 72728,
+      "inlineBytes": 102382,
+      "spineBytes": 15209,
+      "randomBytes": 2343,
+      "carouselBytes": 7382,
+      "modelMessageScripts": 1
+    },
+    "after": {
+      "htmlBytes": 309674,
+      "gzipBytes": 65966,
+      "inlineBytes": 77448,
+      "spineBytes": 0,
+      "randomBytes": 0,
+      "carouselBytes": 0,
+      "modelMessageScripts": 0
+    }
+  },
+  {
+    "name": "article",
+    "path": "/posts/ai-infra/cuda/global-indexing/",
+    "before": {
+      "htmlBytes": 451572,
+      "gzipBytes": 94229,
+      "inlineBytes": 110973,
+      "spineBytes": 15209,
+      "randomBytes": 2343,
+      "carouselBytes": 7382,
+      "modelMessageScripts": 1
+    },
+    "after": {
+      "htmlBytes": 426062,
+      "gzipBytes": 87462,
+      "inlineBytes": 86039,
+      "spineBytes": 0,
+      "randomBytes": 0,
+      "carouselBytes": 0,
+      "modelMessageScripts": 0
+    }
+  },
+  {
+    "name": "archive",
+    "path": "/archive/",
+    "before": {
+      "htmlBytes": 304979,
+      "gzipBytes": 69756,
+      "inlineBytes": 97900,
+      "spineBytes": 15209,
+      "randomBytes": 2343,
+      "carouselBytes": 7382,
+      "modelMessageScripts": 1
+    },
+    "after": {
+      "htmlBytes": 279469,
+      "gzipBytes": 63008,
+      "inlineBytes": 72966,
+      "spineBytes": 0,
+      "randomBytes": 0,
+      "carouselBytes": 0,
+      "modelMessageScripts": 0
+    }
+  }
+]

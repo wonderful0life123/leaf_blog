@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import {archiveManifest,ARCHIVE_FILE,validateArchive} from '../../src/lib/public-archive.mjs';
 import {seedOrganization,targetArticlePath} from '../../src/lib/studio-organization.mjs';
 import {createCatalog} from './catalog.mjs';
+import {contentComparison,createContentParser} from './article-status.mjs';
 import {planArticleChanges,readPublicInventory} from './article-changes.mjs';
 import {postUrl,routeFromPath,suggestedFilename} from '../../src/lib/article-paths.mjs';
 import path from 'node:path';
@@ -32,6 +33,7 @@ function writeContent(root,relative,bytes){
 }
 export function openPublications({dataDir,store,config,adapter,sourceRoots}){
   const root=path.join(dataDir,'publications');fs.mkdirSync(root,{recursive:true,mode:0o700});
+  const parseStatusBody=createContentParser();
   const driver=adapter||(config?(config.mode==='runtime'?runtimePublisher(config):gitPublisher(config)):null);
   let active=null;
   function read(id){if(!uuid.test(id))throw new StoreError(400,'无效的发布编号');try{return JSON.parse(fs.readFileSync(path.join(root,id,'job.json'),'utf8'));}catch{throw new StoreError(404,'发布记录不存在');}}
@@ -41,7 +43,7 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
   for(const job of list())if(['building','publishing'].includes(job.state)){job.finishedAt=new Date().toISOString();job.state=job.commit?'retry':'failed';job.error='服务曾中断。草稿已保留；请重新检查或重试已确认的发布。';save(job);}
   function usePublishedSource(job){if(sourceRoots&&job?.state==='published'&&job.codeRevision===config?.codeRevision)sourceRoots.blog=path.join(root,job.id,'work/src/content/posts');}
   usePublishedSource(list().find(job=>job.state==='published'));
-  function currentPosts(){const published=list().find(j=>j.state==='published'&&j.codeRevision===config?.codeRevision);return sourceRoots?.blog||(published?path.join(root,published.id,'work/src/content/posts'):config?.repoDir?path.join(config.repoDir,'src/content/posts'):null);}
+  function currentPosts(){if(sourceRoots?.blog)return sourceRoots.blog;const published=list().find(j=>j.state==='published'&&j.codeRevision===config?.codeRevision);return published?path.join(root,published.id,'work/src/content/posts'):config?.repoDir?path.join(config.repoDir,'src/content/posts'):null;}
   function catalogItems(){const blog=currentPosts();return blog?createCatalog({blog}).scan().articles:[];}
   function draftContext(draft){
     const items=catalogItems();store.bindArticles(items);const binding=store.binding(draft);
@@ -105,12 +107,17 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
       return view(job);
     },
     decorate(drafts){
-      const jobs=list();store.bindArticles(catalogItems());
+      const jobs=list(),items=catalogItems();store.bindArticles(items);
       const bindings=store.bindings(),byId=new Map(bindings.map(b=>[b.articleId,b])),byPath=new Map(),latestPublished=new Map();
+      const originals=new Map(items.filter(a=>a.status==='published').map(a=>[a.articleId,a]));
+      const hasChanges=contentComparison(currentPosts(),bindings,parseStatusBody);
       for(const b of bindings)for(const p of [b.path,...b.aliases])if(!byPath.has(p))byPath.set(p,b);
       for(const j of jobs)if(j.state==='published'&&!latestPublished.has(j.draftId))latestPublished.set(j.draftId,j);
       return drafts.map(draft=>{const binding=byId.get(draft.articleId)||byPath.get(draft.source?.path),published=latestPublished.get(draft.id);
-        return binding||published?{...draft,articleId:binding?.articleId||draft.source?.articleId,status:published?.revision===draft.revision?'published':'draft',publication:{revision:published?.revision,path:binding?.path||published.path,url:binding?postUrl(binding.route):published.url,commit:published?.commit}}:draft;
+        if(!binding&&!published)return draft;
+        const original=originals.get(binding?.articleId||draft.articleId);
+        const changed=original?hasChanges(draft,original):published?.revision!==draft.revision;
+        return {...draft,articleId:binding?.articleId||draft.source?.articleId,status:changed?'draft':'published',hasUnpublishedChanges:changed,publication:{revision:published?.revision,path:binding?.path||published.path,url:binding?postUrl(binding.route):published.url,commit:published?.commit}};
       });
     },
     info(draftId){

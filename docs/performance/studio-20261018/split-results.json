@@ -1,0 +1,32 @@
+{
+  "before": {
+    "万字正文基线": {
+      "n": 71,
+      "medianMs": 25,
+      "maxMs": 31.600000023841858,
+      "parsesWithinInputWindow": 71
+    },
+    "百个代码块基线": {
+      "n": 71,
+      "medianMs": 33.700000047683716,
+      "maxMs": 50,
+      "parsesWithinInputWindow": 71
+    },
+    "previewUpdatesTotal": 144
+  },
+  "after": {
+    "万字正文基线": {
+      "n": 71,
+      "medianMs": 19.700000047683716,
+      "maxMs": 26,
+      "parsesWithinInputWindow": 0
+    },
+    "百个代码块基线": {
+      "n": 71,
+      "medianMs": 24.90000009536743,
+      "maxMs": 36.699999928474426,
+      "parsesWithinInputWindow": 0
+    },
+    "previewUpdatesTotal": 73
+  }
+}
