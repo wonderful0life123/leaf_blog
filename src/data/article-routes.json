@@ -2,6 +2,13 @@
   "format": 1,
   "articles": [
     {
+      "id": "655d4461-c0c4-4262-89a6-bc6a5e1760bc",
+      "path": "element wise算子.md",
+      "route": "element wise算子",
+      "aliases": [],
+      "guid": "urn:wonder:article:655d4461-c0c4-4262-89a6-bc6a5e1760bc"
+    },
+    {
       "id": "legacy:firefly.md",
       "path": "firefly.md",
       "route": "firefly",
@@ -24,9 +31,11 @@
     },
     {
       "id": "legacy:ai-infra/cuda/element-wise.md",
-      "path": "ai-infra/cuda/element-wise.md",
-      "route": "ai-infra/cuda/element-wise",
-      "aliases": [],
+      "path": "ai-infra/telilang/element-wise.md",
+      "route": "ai-infra/telilang/element-wise",
+      "aliases": [
+        "ai-infra/cuda/element-wise"
+      ],
       "guidRoute": "ai-infra/cuda/element-wise"
     },
     {
@@ -58,13 +67,6 @@
       "route": "llm-algorithms/transformer/llm-system-overview",
       "aliases": [],
       "guidRoute": "llm-algorithms/transformer/llm-system-overview"
-    },
-    {
-      "id": "655d4461-c0c4-4262-89a6-bc6a5e1760bc",
-      "path": "element wise算子.md",
-      "route": "element wise算子",
-      "aliases": [],
-      "guid": "urn:wonder:article:655d4461-c0c4-4262-89a6-bc6a5e1760bc"
     }
   ]
 }

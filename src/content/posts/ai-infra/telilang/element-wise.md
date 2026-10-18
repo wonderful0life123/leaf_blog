@@ -7,13 +7,13 @@ tags:
   - CUDA
   - GPU
   - AI infra
-category: ai-infra/cuda
+category: ai-infra/telilang
 draft: false
 sourceLink: >-
   https://github.com/wonderful0life123/obsidian_note/blob/main/AI%20Infra/cuda/element%20wise%E7%AE%97%E5%AD%90.md
 comment: true
 articleId: 'legacy:ai-infra/cuda/element-wise.md'
-slug: ai-infra/cuda/element-wise
+slug: ai-infra/telilang/element-wise
 ---
 
 # CUDA Element-wise 算子
