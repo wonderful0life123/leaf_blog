@@ -1,0 +1,170 @@
+{
+  "isolated": true,
+  "origin": "http://127.0.0.1:50872",
+  "buildMs": 0,
+  "buildCount": 1,
+  "compiledHashUnchanged": true,
+  "measurements": [
+    {
+      "scenario": "first publication",
+      "previewMs": 653,
+      "confirmToPublishedMs": 584,
+      "includingHTTPVerificationMs": 1421,
+      "timings": [
+        {
+          "stage": "source",
+          "durationMs": 71,
+          "status": "complete"
+        },
+        {
+          "stage": "workspace",
+          "durationMs": 179,
+          "status": "complete"
+        },
+        {
+          "stage": "content",
+          "durationMs": 29,
+          "status": "complete"
+        },
+        {
+          "stage": "render",
+          "durationMs": 317,
+          "status": "complete"
+        },
+        {
+          "stage": "snapshot",
+          "durationMs": 26,
+          "status": "complete"
+        },
+        {
+          "stage": "feeds",
+          "durationMs": 20,
+          "status": "complete"
+        },
+        {
+          "stage": "search",
+          "durationMs": 39,
+          "status": "complete"
+        },
+        {
+          "stage": "build",
+          "durationMs": 108,
+          "status": "complete"
+        }
+      ],
+      "commit": "7973abf0d7ba72283b5ae035c02f98f25abb35be"
+    },
+    {
+      "scenario": "body and metadata update",
+      "previewMs": 349,
+      "confirmToPublishedMs": 582,
+      "includingHTTPVerificationMs": 1115,
+      "timings": [
+        {
+          "stage": "source",
+          "durationMs": 67,
+          "status": "complete"
+        },
+        {
+          "stage": "workspace",
+          "durationMs": 194,
+          "status": "complete"
+        },
+        {
+          "stage": "content",
+          "durationMs": 21,
+          "status": "complete"
+        },
+        {
+          "stage": "render",
+          "durationMs": 21,
+          "status": "complete"
+        },
+        {
+          "stage": "snapshot",
+          "durationMs": 23,
+          "status": "complete"
+        },
+        {
+          "stage": "feeds",
+          "durationMs": 16,
+          "status": "complete"
+        },
+        {
+          "stage": "search",
+          "durationMs": 37,
+          "status": "complete"
+        },
+        {
+          "stage": "build",
+          "durationMs": 100,
+          "status": "complete"
+        }
+      ],
+      "commit": "e0dc0859afd503923cdafffdef5aefb30c2594ed"
+    },
+    {
+      "scenario": "directory publication",
+      "confirmToPublishedMs": 893,
+      "timings": [
+        {
+          "stage": "source",
+          "durationMs": 75,
+          "status": "complete"
+        },
+        {
+          "stage": "workspace",
+          "durationMs": 181,
+          "status": "complete"
+        },
+        {
+          "stage": "content",
+          "durationMs": 21,
+          "status": "complete"
+        },
+        {
+          "stage": "snapshot",
+          "durationMs": 155,
+          "status": "complete"
+        },
+        {
+          "stage": "feeds",
+          "durationMs": 16,
+          "status": "complete"
+        },
+        {
+          "stage": "search",
+          "durationMs": 38,
+          "status": "complete"
+        },
+        {
+          "stage": "build",
+          "durationMs": 233,
+          "status": "complete"
+        }
+      ],
+      "commit": "b11f200da42b05dafdc5412d5499b6074807e088"
+    }
+  ],
+  "checks": [
+    "original three CUDA images return exact bytes before and after publishing",
+    "two real HTTP preview/confirm flows and local Git pushes",
+    "home/archive/article/feed/sitemap/media updated together",
+    "versioned Pagefind bundles and old assets retained",
+    "duplicate confirm blocked/idempotent",
+    "draft data excluded",
+    "real rejected push preserves site; manager restart retries same commit",
+    "post-push activation failure preserves previous release; restart retry creates no extra commit",
+    "draft changes during candidate build block commit and activation",
+    "real concurrent remote commit rejects stale preview",
+    "real directory move, old URL redirects, draft body excluded and image bytes preserved",
+    "single publication includes own body and desired move; reversible aliases do not loop",
+    "Chinese filename differs from title; nested folder move and undo stay private until applied; public path/category/image/redirect agree; private sibling and body edits excluded; subsequent body-only update keeps new folder"
+  ],
+  "limitations": [
+    "local bare remote, not GitHub network",
+    "no production CDN; HTML/manifest use no-store",
+    "runtime mode rejects published MDX/encrypted posts/automatic OG images",
+    "media kept original; not a load test"
+  ]
+}

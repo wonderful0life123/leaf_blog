@@ -1,0 +1,79 @@
+{
+  "before": {
+    "desktop": [
+      {
+        "alt": "Mobile background image of the blog",
+        "complete": true,
+        "src": "http://127.0.0.1:4342/_astro/hanli-jieying-qianye-4k.C5prUc2q_Z1V6O74.webp",
+        "visible": false,
+        "width": 1440,
+        "bytes": 99408
+      },
+      {
+        "alt": "Desktop background image of the blog",
+        "complete": true,
+        "src": "http://127.0.0.1:4342/_astro/hanli-jieying-qianye-4k.C5prUc2q_2lckGV.webp",
+        "visible": true,
+        "width": 1440,
+        "bytes": 369070
+      }
+    ],
+    "mobile": [
+      {
+        "alt": "Mobile background image of the blog",
+        "complete": true,
+        "src": "http://127.0.0.1:4342/_astro/hanli-jieying-qianye-4k.C5prUc2q_1hX4xD.webp",
+        "visible": true,
+        "width": 390,
+        "bytes": 40360
+      },
+      {
+        "alt": "Desktop background image of the blog",
+        "complete": true,
+        "src": "http://127.0.0.1:4342/_astro/hanli-jieying-qianye-4k.C5prUc2q_10Qfnu.webp",
+        "visible": false,
+        "width": 390,
+        "bytes": 186922
+      }
+    ]
+  },
+  "after": {
+    "desktop": [
+      {
+        "alt": "Mobile background image of the blog",
+        "complete": true,
+        "src": "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+        "visible": false,
+        "width": 1,
+        "bytes": 0
+      },
+      {
+        "alt": "Desktop background image of the blog",
+        "complete": true,
+        "src": "http://127.0.0.1:4342/_astro/hanli-jieying-qianye-4k.C5prUc2q_Z1bV38i.webp",
+        "visible": true,
+        "width": 1440,
+        "bytes": 369070
+      }
+    ],
+    "mobile": [
+      {
+        "alt": "Mobile background image of the blog",
+        "complete": true,
+        "src": "http://127.0.0.1:4342/_astro/hanli-jieying-qianye-4k.C5prUc2q_1yK85B.webp",
+        "visible": true,
+        "width": 390,
+        "bytes": 40360
+      },
+      {
+        "alt": "Desktop background image of the blog",
+        "complete": true,
+        "src": "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+        "visible": false,
+        "width": 1,
+        "bytes": 0
+      }
+    ]
+  },
+  "method": "Local production HTML; 1440x900 desktop and 390x844 mobile; no-store test server. Bytes are encoded selected image file lengths, not overall page latency. Visible before/after image SHA-256 identical."
+}

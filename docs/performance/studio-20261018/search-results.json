@@ -1,0 +1,26 @@
+{
+  "before-idle": {
+    "requests": 2,
+    "bodyBytes": 638,
+    "fragments": 0,
+    "fragmentBytes": 0
+  },
+  "after-idle": {
+    "requests": 0,
+    "bodyBytes": 0,
+    "fragments": 0,
+    "fragmentBytes": 0
+  },
+  "before-search": {
+    "requests": 16,
+    "bodyBytes": 206648,
+    "fragments": 7,
+    "fragmentBytes": 24506
+  },
+  "after-search": {
+    "requests": 13,
+    "bodyBytes": 205804,
+    "fragments": 5,
+    "fragmentBytes": 23662
+  }
+}

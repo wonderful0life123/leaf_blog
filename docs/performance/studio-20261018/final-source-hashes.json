@@ -1,0 +1,26 @@
+{
+  "base": "8d106a3331ebe8991e5c23a29408860c8ee0602e",
+  "uncommitted": true,
+  "sha256": {
+    "scripts/studio/article-status.mjs": "066e9f18228b8f024bddfe8faf3304f29b9937f5809e0d111d7200ad15fb653b",
+    "scripts/studio/publications.mjs": "f0c5f1f65fa19652bed0790d3c04696375d98625f6abff67153c285d9a7644a2",
+    "src/components/common/ImageWrapper.astro": "d0fef4bf6453f4e6bbbcf9fc2e89a17b3469e236f446d6efb8e1b4b42f99966b",
+    "src/components/controls/Search.svelte": "22012482532e29cf6c6bbd005b350363564528dadc22cf8a30d14453cd2b40cc",
+    "src/components/features/MusicPlayer.astro": "4eb20f6b0024ed90ac81b8756ecd7005720927806f00d85073b1de627f4600a0",
+    "src/components/features/music-player-view.js": "7a2a6a642f2d6320184a016dc9ed3ba9585c41dc38a17583d3172936c3b324c3",
+    "src/components/layout/Navbar.astro": "60ccdb0277d50d49ed55adfc46e9df5cff413efe0f30cdc45984cc16c737fd59",
+    "src/components/pages/AdvancedSearch.svelte": "9513e9c0d019b33ed4d0cb452c4f55c76d9e07fa9e49be9495f5b9558b1c6144",
+    "src/components/studio/Studio.svelte": "e93b9ec16a38d677a0a8054d3c22275984b58711a9c0bcf8fc8473091421fb43",
+    "src/components/studio/WritingEditor.svelte": "b82a1c7c195733b78b52ab404291f8dab7c52619eca4469b988eb74a32bf8633",
+    "src/components/studio/markdown-cache.mjs": "e118828a76f8d2f107b0815911e0c46135ba42375b2691834f7f33ac2e3784a4",
+    "src/components/studio/preview-queue.mjs": "2747236b3b6725ddda308084316990f198968c6c3deefe545ca7ea5c52c5c438",
+    "src/components/studio/reading-code.mjs": "ad3cb1d25d393b2782aa63f784dab6ea9bb624bf16ecfbd5bfe8241908e1c6cf",
+    "src/layouts/MainGridLayout.astro": "730565b49656adc90bf5aa95d5a418e6c450138e10f990461f57cd5ff88b342e",
+    "src/pages/search.astro": "feaad90545a29758f6ec691b7e7bb39aa49714fa9a8c47fed14f36922b06e67e",
+    "src/utils/search-client.mjs": "82a3db28f3347436eed6b02c56d9da66878fb91fbcfd43f592647c8279c46a96",
+    "tests/studio/article-status-cache.test.mjs": "df6dd2519e9bd687f240c7f37f9d17ecfa317fb7cc313241d69d08bd60994728",
+    "tests/studio/markdown-cache.test.mjs": "a468c29513c21677f83e5bbf93c7b51d10e36ee589e2ee193e13e1b6dd46418d",
+    "tests/studio/preview-queue.test.mjs": "03845e0730fbf4c10596449ee8cb69eef2fcb37f7bd82210ad18016b74e39f4e",
+    "tests/studio/search-client.test.mjs": "52ba13834f0ea61d2607da9b484b4a359f439882ea32da3a209de23b4b39a720"
+  }
+}
