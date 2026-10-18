@@ -1,12 +1,12 @@
 ---
 title: element wise算子
-category: ''
+category: ai-infra/cuda
 tags: []
 description: ''
 published: 2026-10-18T00:00:00.000Z
 draft: false
 articleId: 655d4461-c0c4-4262-89a6-bc6a5e1760bc
-slug: element wise算子
+slug: ai-infra/cuda/element wise算子
 ---
 共同核心在于：输出位置 i 的值仅取决于输入数据在同一位置 i 的值（单目运算）或对应位置 i 的值（双目运算），计算过程不涉及相邻位置数据的求和、滑动窗口或矩阵乘法。
 

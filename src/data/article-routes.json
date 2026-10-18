@@ -3,9 +3,11 @@
   "articles": [
     {
       "id": "655d4461-c0c4-4262-89a6-bc6a5e1760bc",
-      "path": "element wise算子.md",
-      "route": "element wise算子",
-      "aliases": [],
+      "path": "ai-infra/cuda/element wise算子.md",
+      "route": "ai-infra/cuda/element wise算子",
+      "aliases": [
+        "element wise算子"
+      ],
       "guid": "urn:wonder:article:655d4461-c0c4-4262-89a6-bc6a5e1760bc"
     },
     {
@@ -30,6 +32,15 @@
       "guidRoute": "writing/server-codex-setup"
     },
     {
+      "id": "legacy:ai-infra/cuda/element-wise.md",
+      "path": "ai-infra/cuda/element-wise.md",
+      "route": "ai-infra/cuda/element-wise",
+      "aliases": [
+        "ai-infra/telilang/element-wise"
+      ],
+      "guidRoute": "ai-infra/cuda/element-wise"
+    },
+    {
       "id": "legacy:ai-infra/cuda/global-indexing.md",
       "path": "ai-infra/cuda/global-indexing.md",
       "route": "ai-infra/cuda/global-indexing",
@@ -44,15 +55,6 @@
         "ai-infra/telilang/references"
       ],
       "guidRoute": "ai-infra/cuda/references"
-    },
-    {
-      "id": "legacy:ai-infra/cuda/element-wise.md",
-      "path": "ai-infra/cuda/element-wise.md",
-      "route": "ai-infra/cuda/element-wise",
-      "aliases": [
-        "ai-infra/telilang/element-wise"
-      ],
-      "guidRoute": "ai-infra/cuda/element-wise"
     },
     {
       "id": "legacy:ai-infra/telilang/tilelang-ascend.md",
