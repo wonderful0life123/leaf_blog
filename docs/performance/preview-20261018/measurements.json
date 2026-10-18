@@ -1,0 +1,1149 @@
+{
+  "environment": "Local macOS / Node v22.23.2; isolated full source repository; no GitHub or CDN",
+  "baseline": [
+    {
+      "warm": false,
+      "warmupMs": 0,
+      "cases": [
+        {
+          "name": "first",
+          "ms": 854,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 19,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 224,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 43,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 509,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "body",
+          "ms": 314,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 16,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 206,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 27,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 27,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "reuse",
+          "ms": 299,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 16,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 188,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 25,
+              "status": "complete"
+            },
+            {
+              "stage": "reuse",
+              "durationMs": 18,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "summary",
+          "ms": 292,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 15,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 191,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 21,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 26,
+              "status": "complete"
+            }
+          ]
+        }
+      ],
+      "firstMs": 854,
+      "changedMs": 314,
+      "reuseMs": 299,
+      "correct": true
+    },
+    {
+      "warm": false,
+      "warmupMs": 0,
+      "cases": [
+        {
+          "name": "first",
+          "ms": 622,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 17,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 163,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 40,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 336,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "body",
+          "ms": 271,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 15,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 164,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 28,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 22,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "reuse",
+          "ms": 271,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 14,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 171,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 26,
+              "status": "complete"
+            },
+            {
+              "stage": "reuse",
+              "durationMs": 15,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "summary",
+          "ms": 274,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 15,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 174,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 24,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 21,
+              "status": "complete"
+            }
+          ]
+        }
+      ],
+      "firstMs": 622,
+      "changedMs": 274,
+      "reuseMs": 271,
+      "correct": true
+    },
+    {
+      "warm": false,
+      "warmupMs": 0,
+      "cases": [
+        {
+          "name": "first",
+          "ms": 614,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 18,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 163,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 39,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 329,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "body",
+          "ms": 277,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 16,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 167,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 28,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 23,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "reuse",
+          "ms": 272,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 15,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 168,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 27,
+              "status": "complete"
+            },
+            {
+              "stage": "reuse",
+              "durationMs": 15,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "summary",
+          "ms": 275,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 17,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 175,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 21,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 22,
+              "status": "complete"
+            }
+          ]
+        }
+      ],
+      "firstMs": 614,
+      "changedMs": 277,
+      "reuseMs": 272,
+      "correct": true
+    }
+  ],
+  "warmWorker": [
+    {
+      "warm": true,
+      "warmupMs": 644,
+      "cases": [
+        {
+          "name": "first",
+          "ms": 454,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 19,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 264,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 46,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 61,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "body",
+          "ms": 367,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 17,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 252,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 29,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 27,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "reuse",
+          "ms": 328,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 17,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 217,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 30,
+              "status": "complete"
+            },
+            {
+              "stage": "reuse",
+              "durationMs": 18,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "summary",
+          "ms": 339,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 28,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 215,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 22,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 24,
+              "status": "complete"
+            }
+          ]
+        }
+      ],
+      "firstMs": 454,
+      "changedMs": 367,
+      "reuseMs": 328,
+      "correct": true
+    },
+    {
+      "warm": true,
+      "warmupMs": 349,
+      "cases": [
+        {
+          "name": "first",
+          "ms": 309,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 17,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 168,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 41,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 25,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "body",
+          "ms": 281,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 16,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 169,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 27,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 24,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "reuse",
+          "ms": 276,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 15,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 170,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 28,
+              "status": "complete"
+            },
+            {
+              "stage": "reuse",
+              "durationMs": 15,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "summary",
+          "ms": 275,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 17,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 170,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 22,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 21,
+              "status": "complete"
+            }
+          ]
+        }
+      ],
+      "firstMs": 309,
+      "changedMs": 281,
+      "reuseMs": 276,
+      "correct": true
+    },
+    {
+      "warm": true,
+      "warmupMs": 350,
+      "cases": [
+        {
+          "name": "first",
+          "ms": 335,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 18,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 181,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 42,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 26,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "body",
+          "ms": 283,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 16,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 172,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 28,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 22,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "reuse",
+          "ms": 345,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 16,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 234,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 29,
+              "status": "complete"
+            },
+            {
+              "stage": "reuse",
+              "durationMs": 17,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "summary",
+          "ms": 294,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 17,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 187,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 23,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 21,
+              "status": "complete"
+            }
+          ]
+        }
+      ],
+      "firstMs": 335,
+      "changedMs": 294,
+      "reuseMs": 345,
+      "correct": true
+    }
+  ],
+  "warmRuntime": [
+    {
+      "warm": true,
+      "warmupMs": 424,
+      "cases": [
+        {
+          "name": "first",
+          "ms": 188,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 17,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 49,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 40,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 27,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "body",
+          "ms": 150,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 16,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 47,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 28,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 22,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "reuse",
+          "ms": 150,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 16,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 49,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 27,
+              "status": "complete"
+            },
+            {
+              "stage": "reuse",
+              "durationMs": 15,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "summary",
+          "ms": 145,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 15,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 48,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 23,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 22,
+              "status": "complete"
+            }
+          ]
+        }
+      ],
+      "firstMs": 188,
+      "changedMs": 150,
+      "reuseMs": 150,
+      "correct": true
+    },
+    {
+      "warm": true,
+      "warmupMs": 350,
+      "cases": [
+        {
+          "name": "first",
+          "ms": 188,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 18,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 48,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 39,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 27,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "body",
+          "ms": 153,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 16,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 48,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 27,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 24,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "reuse",
+          "ms": 146,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 15,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 48,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 26,
+              "status": "complete"
+            },
+            {
+              "stage": "reuse",
+              "durationMs": 15,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "summary",
+          "ms": 144,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 16,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 48,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 22,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 21,
+              "status": "complete"
+            }
+          ]
+        }
+      ],
+      "firstMs": 188,
+      "changedMs": 153,
+      "reuseMs": 146,
+      "correct": true
+    },
+    {
+      "warm": true,
+      "warmupMs": 347,
+      "cases": [
+        {
+          "name": "first",
+          "ms": 183,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 16,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 47,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 38,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 27,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "body",
+          "ms": 152,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 16,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 47,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 27,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 21,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "reuse",
+          "ms": 150,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 15,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 49,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 27,
+              "status": "complete"
+            },
+            {
+              "stage": "reuse",
+              "durationMs": 15,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "name": "summary",
+          "ms": 148,
+          "timings": [
+            {
+              "stage": "source",
+              "durationMs": 16,
+              "status": "complete"
+            },
+            {
+              "stage": "workspace",
+              "durationMs": 46,
+              "status": "complete"
+            },
+            {
+              "stage": "content",
+              "durationMs": 23,
+              "status": "complete"
+            },
+            {
+              "stage": "render",
+              "durationMs": 22,
+              "status": "complete"
+            }
+          ]
+        }
+      ],
+      "firstMs": 183,
+      "changedMs": 152,
+      "reuseMs": 150,
+      "correct": true
+    }
+  ],
+  "coldRuntime": {
+    "warm": false,
+    "warmupMs": 0,
+    "cases": [
+      {
+        "name": "first",
+        "ms": 700,
+        "timings": [
+          {
+            "stage": "source",
+            "durationMs": 17,
+            "status": "complete"
+          },
+          {
+            "stage": "workspace",
+            "durationMs": 48,
+            "status": "complete"
+          },
+          {
+            "stage": "content",
+            "durationMs": 39,
+            "status": "complete"
+          },
+          {
+            "stage": "render",
+            "durationMs": 535,
+            "status": "complete"
+          }
+        ]
+      },
+      {
+        "name": "body",
+        "ms": 161,
+        "timings": [
+          {
+            "stage": "source",
+            "durationMs": 18,
+            "status": "complete"
+          },
+          {
+            "stage": "workspace",
+            "durationMs": 49,
+            "status": "complete"
+          },
+          {
+            "stage": "content",
+            "durationMs": 28,
+            "status": "complete"
+          },
+          {
+            "stage": "render",
+            "durationMs": 27,
+            "status": "complete"
+          }
+        ]
+      },
+      {
+        "name": "reuse",
+        "ms": 157,
+        "timings": [
+          {
+            "stage": "source",
+            "durationMs": 17,
+            "status": "complete"
+          },
+          {
+            "stage": "workspace",
+            "durationMs": 52,
+            "status": "complete"
+          },
+          {
+            "stage": "content",
+            "durationMs": 26,
+            "status": "complete"
+          },
+          {
+            "stage": "reuse",
+            "durationMs": 16,
+            "status": "complete"
+          }
+        ]
+      },
+      {
+        "name": "summary",
+        "ms": 154,
+        "timings": [
+          {
+            "stage": "source",
+            "durationMs": 15,
+            "status": "complete"
+          },
+          {
+            "stage": "workspace",
+            "durationMs": 54,
+            "status": "complete"
+          },
+          {
+            "stage": "content",
+            "durationMs": 22,
+            "status": "complete"
+          },
+          {
+            "stage": "render",
+            "durationMs": 23,
+            "status": "complete"
+          }
+        ]
+      }
+    ],
+    "firstMs": 700,
+    "changedMs": 161,
+    "reuseMs": 157,
+    "correct": true
+  }
+}

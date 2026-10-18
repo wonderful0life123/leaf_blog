@@ -16,7 +16,8 @@ export function studioLocalPlugin() {
       const store=openStore({dataDir:studioDataDir(),sourceRoots});
       const publications=openPublications({dataDir:studioDataDir(),store,sourceRoots,config:{repoDir:previewRepo,enabled:false}});
       server.middlewares.use('/studio-api',createHandler(store,{publications,catalog:createCatalog(sourceRoots)}));
-      server.httpServer?.once('close',()=>store.close());
+      void Promise.resolve(publications.warmup()).catch(error=>console.warn('[studio-preview] Startup unavailable:',error.message));
+      server.httpServer?.once('close',()=>{void publications.close();store.close();});
       console.log('[studio] Local drafts: '+store.filename);
     }
   };

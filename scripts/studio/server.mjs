@@ -48,7 +48,8 @@ export function createStudioServer(config,authOptions={}) {
     }catch(error){if(error instanceof StoreError){if(req.url.startsWith('/studio-auth/')){const kind=error.status===403?'denied':error.status===502?'unavailable':error.status===429?'busy':'expired';res.writeHead(302,{Location:'/studio/?loginError='+kind});return res.end();}return json(res,error.status,{error:error.message});}console.error('[studio] Request failed:',error.code||error.name);json(res,500,{error:'服务暂时不可用，请稍后重试'});}
   });
   server.requestTimeout=30000;server.headersTimeout=15000;
-  server.on('close',()=>{store.close();auth.close();});
+  server.once('listening',()=>{void Promise.resolve(publications.warmup()).then(result=>{if(result)console.log('[studio-preview] Ready',JSON.stringify(result));}).catch(error=>console.warn('[studio-preview] Startup unavailable:',error.message));});
+  server.on('close',()=>{void publications.close();store.close();auth.close();});
   return server;
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===path.resolve(process.argv[1])) {

@@ -35,12 +35,22 @@ export function gitPublisher(config) {
     }
     return run('git',['rev-parse','HEAD']);
   }
+  const preview=articlePreview(repo);
   return {
     head,
-    preview:articlePreview(repo),
+    preview,
+    warmup:()=>preview.warmup(),
+    close:()=>preview.close(),
     async prepare(dir,base){
       const workspace=path.join(dir,'work');fs.mkdirSync(workspace,{recursive:true,mode:0o700});
-      await run('git',['archive','--format=tar','-o',path.join(dir,'source.tar'),base]);
+      // Runtime code/assets are already deployed. Only content and its metadata
+      // belong in a task workspace; commit() still starts from the complete base
+      // tree, so omitted application files are never staged as deletions.
+      const paths=config.mode==='runtime'
+        ? (await run('git',['ls-tree','--name-only','-z',base,'--','src/content/posts','src/data','pnpm-lock.yaml'])).split('\0').filter(Boolean)
+        : [];
+      if(config.mode==='runtime'&&!paths.includes('pnpm-lock.yaml'))fail('发布仓库缺少依赖锁文件。');
+      await run('git',['archive','--format=tar','-o',path.join(dir,'source.tar'),base,...(config.mode==='runtime'?['--',...paths]:[])]);
       await run('tar',['-xf',path.join(dir,'source.tar'),'-C',workspace]);fs.unlinkSync(path.join(dir,'source.tar'));
       // A reviewed checkout with the exact lockfile supplies installed dependencies.
       if(!fs.readFileSync(path.join(workspace,'pnpm-lock.yaml')).equals(fs.readFileSync(path.join(repo,'pnpm-lock.yaml'))))fail('发布仓库依赖版本已变化，请先由部署方安装并验证新版本。');

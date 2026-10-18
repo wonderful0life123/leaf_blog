@@ -78,6 +78,8 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
   function unchanged(job){if(job.kind==='organization'){if(store.organization([]).revision!==job.revision)throw new StoreError(409,'目录已发生变化，请重新检查公开目录后再发布。');return;}const draft=store.get(job.draftId);if(job.organizationRevision!==undefined&&store.organization([]).revision!==job.organizationRevision)throw new StoreError(409,'目录已发生变化，请重新检查并预览。');if(draft.deletedAt||draft.revision!==job.revision)throw new StoreError(409,'草稿已发生变化，请重新检查并预览后再发布。');}
   function launch(job,task){active=job.id;Promise.resolve().then(task).catch(error=>{job.finishedAt=new Date().toISOString();job.state=job.commit?'retry':'failed';job.error=error instanceof StoreError?error.message:job.pushed?'文章已提交 GitHub，网站或本地确认尚未完成，请重试上线。':'发布未完成，草稿已保留，请重试或检查发布日志。';save(job);}).finally(()=>active=null);}
   return {
+    warmup:()=>driver?.warmup?.(),
+    close:()=>driver?.close?.(),
     organizationInfo(){const job=list().find(j=>j.kind==='organization');return {available:!!driver,enabled:!!config?.enabled,latest:job?view(job):null};},
     prepareOrganization(input,items=[]){
       if(!driver)throw new StoreError(503,'发布服务尚未配置。');

@@ -12,7 +12,7 @@ import {gitPublisher} from '../../scripts/studio/publication-git.mjs';
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV8sAAAAASUVORK5CYII=','base64');
 async function ready(manager,id){for(let i=0;i<1000;i++){const job=manager.get(id);if(job.state!=='building')return job;await new Promise(r=>setTimeout(r,10));}throw Error('单篇预览超过 10 秒');}
-test('真实单篇渲染首次与正文修改都在 10 秒内完成，复用博客代码/公式/表格/图片且产物私密',async t=>{
+for(const warmed of [false,true])test(warmed?'服务预热后单篇预览首次与正文修改都在 3 秒内完成':'冷启动单篇预览保留 10 秒上限、正确渲染且产物私密',async t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'wonder-fast-preview-')),dataDir=path.join(root,'data');
  const store=openStore({dataDir});t.after(()=>{store.close();fs.rmSync(root,{recursive:true,force:true});});
  const image=store.upload(png);
@@ -24,6 +24,8 @@ test('真实单篇渲染首次与正文修改都在 10 秒内完成，复用博�
  git(['init']);git(['add','.']);git(['-c','user.name=Preview test','-c','user.email=test@example.invalid','commit','-m','Isolated preview fixture']);
  fs.symlinkSync(path.join(repo,'node_modules'),path.join(fixtureRepo,'node_modules'),'dir');fs.symlinkSync(path.join(repo,'.studio-preview'),path.join(fixtureRepo,'.studio-preview'),'dir');
  const driver=gitPublisher({repoDir:fixtureRepo,enabled:false});driver.build=()=>{throw Error('单篇预览禁止调用全站构建');};
+ t.after(()=>driver.close());
+ if(warmed){const warmStarted=performance.now();await driver.warmup();t.diagnostic('启动预热毫秒：'+Math.round(performance.now()-warmStarted));}
  const manager=openPublications({dataDir,store,config:{repoDir:fixtureRepo,enabled:false},adapter:driver});
  const timings=[];
  for(let i=0;i<3;i++){
@@ -31,7 +33,7 @@ test('真实单篇渲染首次与正文修改都在 10 秒内完成，复用博�
   const started=performance.now(),job=await ready(manager,manager.prepare(draft.id,{revision:draft.revision,path:'writing/fast.md',description:'摘要',published:'2026-10-13'}).id);
   assert.equal(job.state,'ready',job.error);assert.equal(job.previewOnly,true);assert.equal(job.reused,i===2);
   timings.push(Math.round(performance.now()-started));
-  assert.ok(timings.at(-1)<10000);assert.ok(!fs.existsSync(path.join(dataDir,'publications',job.id,'work/dist')));
+  assert.ok(timings.at(-1)<(warmed?3000:10000));assert.ok(!fs.existsSync(path.join(dataDir,'publications',job.id,'work/dist')));
   const html=manager.preview(job.id,'posts/fast/').bytes.toString(),doc=parse(html);
   assert.ok(html.includes('expressive-code'));assert.ok(html.includes('katex'));assert.ok(doc.querySelector('table'));assert.ok(html.includes('提示内容'));
   assert.equal(doc.querySelector('h1').textContent,'<安全的标题>');assert.ok(!doc.querySelector('script'));assert.ok(!html.includes('__ASTRO_IMAGE_'));assert.ok(!html.includes('/studio-api/media/'));

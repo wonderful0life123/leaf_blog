@@ -204,3 +204,19 @@ test('打开已发布文章的创建响应即带正确状态，保存修改及�
  draft=(await save('正文')).data.draft;assert.equal(draft.status,'published');assert.equal(draft.hasUnpublishedChanges,false);
  const listed=await f.request('/studio-api/drafts/',{headers});assert.equal(listed.data.drafts.find(d=>d.id===draft.id).status,'published');
 });
+
+test('Studio starts preview warmup before any authenticated request and keeps anonymous access blocked',async t=>{
+ const f=await setup(t),repo=path.join(f.root,'publisher'),compiled=path.join(repo,'.studio-preview');
+ fs.mkdirSync(path.join(repo,'src/content/posts'),{recursive:true});
+ fs.mkdirSync(path.join(compiled,'assets'),{recursive:true});
+ fs.writeFileSync(path.join(compiled,'assets/preview.css'),'/* fixture */');
+ fs.writeFileSync(path.join(compiled,'renderer.mjs'),`import fs from 'node:fs';export function renderArticle(){fs.writeFileSync(new URL('./warmed',import.meta.url),'ready');return '<html>ready</html>';}`);
+ f.config.publication={repoDir:repo,enabled:false};
+ await f.restart();
+ const marker=path.join(compiled,'warmed');
+ for(let i=0;i<100&&!fs.existsSync(marker);i++)await new Promise(r=>setTimeout(r,10));
+ assert.equal(fs.readFileSync(marker,'utf8'),'ready');
+ assert.equal((await f.request('/studio/')).status,200);
+ assert.equal((await f.request('/studio-api/drafts/')).status,401);
+ assert.deepEqual(fs.readdirSync(path.join(f.config.dataDir,'publications')),[]);
+});
