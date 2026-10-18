@@ -30,15 +30,6 @@
       "guidRoute": "writing/server-codex-setup"
     },
     {
-      "id": "legacy:ai-infra/cuda/element-wise.md",
-      "path": "ai-infra/telilang/element-wise.md",
-      "route": "ai-infra/telilang/element-wise",
-      "aliases": [
-        "ai-infra/cuda/element-wise"
-      ],
-      "guidRoute": "ai-infra/cuda/element-wise"
-    },
-    {
       "id": "legacy:ai-infra/cuda/global-indexing.md",
       "path": "ai-infra/cuda/global-indexing.md",
       "route": "ai-infra/cuda/global-indexing",
@@ -53,6 +44,15 @@
         "ai-infra/telilang/references"
       ],
       "guidRoute": "ai-infra/cuda/references"
+    },
+    {
+      "id": "legacy:ai-infra/cuda/element-wise.md",
+      "path": "ai-infra/cuda/element-wise.md",
+      "route": "ai-infra/cuda/element-wise",
+      "aliases": [
+        "ai-infra/telilang/element-wise"
+      ],
+      "guidRoute": "ai-infra/cuda/element-wise"
     },
     {
       "id": "legacy:ai-infra/telilang/tilelang-ascend.md",
