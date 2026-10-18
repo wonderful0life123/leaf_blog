@@ -2,6 +2,7 @@ import {StateField, StateEffect} from '@codemirror/state';
 import {Decoration, EditorView, WidgetType} from '@codemirror/view';
 import {markdownLanguage} from '@codemirror/lang-markdown';
 import {marked} from 'marked';
+import {githubDirective,githubCardHtml,hydrateGithubCard} from './github-card.mjs';
 import katex from 'katex';
 import {readTable} from './table-edit.mjs';
 import {codeSegments} from './code-preview.mjs';
@@ -77,6 +78,11 @@ export function livePlan(text) {
       return false;
     }
   }});
+  const directives=/^ {0,3}::github\{[^\n]*\}[ \t]*$/gm;let directive;
+  while((directive=directives.exec(text))){
+    const from=directive.index,to=from+directive[0].length,repo=githubDirective(directive[0]);
+    if(repo&&!excluded.some(([a,b])=>from<b&&to>a)){add('github',from,to,{repo});excluded.push([from,to]);}
+  }
   // Math is outside code, links, image syntax, HTML and tables. Incomplete expressions stay editable.
   const math=/\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g;let m;
   while((m=math.exec(text))){
@@ -98,11 +104,15 @@ class Rendered extends WidgetType {
   toDOM(view){
     const i=this.item,dom=document.createElement('span');dom.className='cm-live-widget cm-live-'+(i.kind==='codeblock'?'code-preview':i.kind);dom.contentEditable='false';
     const edit=()=>{view.dispatch({selection:{anchor:Math.min(i.kind==='codeblock'?i.codeFrom:i.from+1,view.state.doc.length)}});view.focus();};
-    dom.setAttribute('role','button');dom.tabIndex=0;dom.setAttribute('aria-label',({codeblock:'编辑代码块（'+i.language+'）',image:'编辑图片：'+(i.alt||'图片'),math:'编辑公式',table:i.editable&&this.onTable?'编辑表格':'编辑表格源码',task:'切换待办状态',bullet:'编辑列表'})[i.kind]);
+    dom.setAttribute('role','button');dom.tabIndex=0;dom.setAttribute('aria-label',({github:'编辑 GitHub 卡片：'+i.repo,codeblock:'编辑代码块（'+i.language+'）',image:'编辑图片：'+(i.alt||'图片'),math:'编辑公式',table:i.editable&&this.onTable?'编辑表格':'编辑表格源码',task:'切换待办状态',bullet:'编辑列表'})[i.kind]);
     dom.addEventListener('mousedown',e=>e.preventDefault());
     const activate=()=>{if(i.kind==='table'&&i.editable&&this.onTable){this.onTable(i);return;}if(i.kind==='image'&&this.onImage){this.onImage(i);return;}if(i.kind==='task'&&!view.state.readOnly){view.dispatch({changes:{from:i.from,to:i.to,insert:i.checked?'[ ]':'[x]'},userEvent:'input'});view.focus();}else edit();};
     dom.addEventListener('click',activate);dom.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();activate();}});
-    if(i.kind==='codeblock'){
+    if(i.kind==='github'){
+      dom.innerHTML=githubCardHtml(i.repo);
+      const card=dom.querySelector('a');card.tabIndex=-1;card.title='点击编辑 GitHub 卡片';
+      hydrateGithubCard(card,()=>view.requestMeasure());card.removeAttribute('href');card.removeAttribute('target');
+    }else if(i.kind==='codeblock'){
       const header=document.createElement('span');header.className='cm-live-code-header';
       const label=document.createElement('span');label.textContent=i.language;
       const hint=document.createElement('span');hint.textContent='点击编辑';header.append(label,hint);
@@ -122,7 +132,7 @@ class Rendered extends WidgetType {
 }
 function decorations(state,items,resolveImage,onImage,onTable){
   const ranges=[];
-  const replacements=items.filter(i=>(['image','math','table'].includes(i.kind)||(i.kind==='codeblock'&&i.complete))&&!active(state,i.from,i.to));
+  const replacements=items.filter(i=>(['image','math','table','github'].includes(i.kind)||(i.kind==='codeblock'&&i.complete))&&!active(state,i.from,i.to));
   for(const i of items){
     if(replacements.some(r=>r!==i&&i.from>=r.from&&i.to<=r.to))continue;
     const owner=i.owner||[i.from,i.to],editing=active(state,...owner);
@@ -134,7 +144,7 @@ function decorations(state,items,resolveImage,onImage,onTable){
       else {
         const src=i.kind==='image'?safeLiveImage(resolveImage(i.src)):'';
         if(i.kind==='image'&&!src)continue;
-        const block=['table','codeblock'].includes(i.kind)||((i.kind==='image'||i.kind==='math')&&state.doc.lineAt(i.from).from===i.from&&state.doc.lineAt(i.to).to===i.to);
+        const block=['table','codeblock','github'].includes(i.kind)||((i.kind==='image'||i.kind==='math')&&state.doc.lineAt(i.from).from===i.from&&state.doc.lineAt(i.to).to===i.to);
         ranges.push(Decoration.replace({widget:new Rendered(i,src,onImage,onTable),block}).range(i.from,i.to));
       }
     }

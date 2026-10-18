@@ -1,4 +1,5 @@
 <script>
+import CoverPicker from "./CoverPicker.svelte";
 import { onMount } from "svelte";
 import { postUrl, routeFromPath } from "../../lib/article-paths.mjs";
 import {
@@ -22,7 +23,11 @@ async function readOrganization() {
 }
 
 import katex from "katex";
-import { marked } from "marked";
+import { Marked, Renderer } from "marked";
+import { githubExtension, githubCards } from "./github-card.mjs";
+
+import { autogrow } from "./autogrow.mjs";
+const marked = new Marked({extensions:[githubExtension]});
 import { displayDate, excerpt, selectArticles } from "./draft-list.mjs";
 import { editorPortal } from "./editor-portal.mjs";
 import "katex/dist/katex.min.css";
@@ -211,6 +216,7 @@ const payload = (d) => ({
 	body: d.body,
 	category: d.category,
 	tags: d.tags,
+	cover: d.cover,
 	revision: d.revision,
 });
 const recoveryKey = (id) => "wonder-draft-recovery:" + id;
@@ -451,6 +457,7 @@ function open(draft) {
 					body: recovery.body,
 					category: recovery.category,
 					tags: recovery.tags,
+					cover: recovery.cover ?? current.cover,
 					revision: recovery.revision,
 				})
 			) {
@@ -464,6 +471,7 @@ function open(draft) {
 				body: recovery.body,
 				category: recovery.category,
 				tags: recovery.tags,
+					cover: recovery.cover ?? current.cover,
 			};
 			dirty = true;
 			editVersion++;
@@ -794,6 +802,7 @@ function exportFile() {
 		) +
 		"\npublished: " +
 		new Date().toISOString().slice(0, 10) +
+		"\nimage: " + JSON.stringify(articleCover(current).value) +
 		"\ndraft: true\n---\n\n" +
 		current.body;
 	const url = URL.createObjectURL(
@@ -1006,6 +1015,17 @@ function status(a) {
 				? "已发布"
 				: "仓库草稿";
 }
+function articleCover(a) {
+  if(a.cover!=null)return {value:a.cover,article:a};
+  const original=articles.find(item=>item.articleId===a.articleId||item.path===a.source?.path);
+  return {value:original?.cover??'',article:original||a};
+}
+function coverSource(a) {
+  const {value,article}=articleCover(a);
+  if(!value||value==='api')return '';
+  if(/^\/(?!\/)/.test(value)&&!value.startsWith('/studio-api/'))return value;
+  return imageSource(value,article);
+}
 function imageSource(href, a) {
 	let src = a.assets?.[href] || href;
 	if (!/^(https?:|\/studio-api\/media\/)/i.test(src)) {
@@ -1029,7 +1049,7 @@ function markdown(raw, a) {
 	return cachedMarkdown(raw, a, assetMap);
 }
 function renderMarkdown(raw, a) {
-	const renderer = new marked.Renderer();
+	const renderer = new Renderer();
 	renderer.image = ({ href, text }) => {
 		const src = imageSource(href, a);
 		return `<img src="${escapeHtml(src)}" alt="${escapeHtml(text || "")}" loading="eager">`;
@@ -1040,6 +1060,8 @@ function renderMarkdown(raw, a) {
 		if (
 			![
 				"P",
+				"SPAN",
+				"DIV",
 				"BR",
 				"HR",
 				"H1",
@@ -1209,7 +1231,7 @@ function escapeHtml(s) {
         <div class="editor-layout" class:with-settings={settingsOpen}>
           <div class="writing-area">
             {#key current.id}<WritingEditor bind:this={bodyEditor} value={current.body} renderPreview={raw=>markdown(raw,current)} resolveImage={href=>imageSource(href,current)} disabled={busy} {uploading} onChange={text=>{current.body=text;changed();}} onUpload={uploadImage} onUploadState={active=>uploading=active}/>{/key}
-          </div>{#if settingsOpen}<aside class="properties"><h3>文章设置</h3><CategoryPicker folders={organization?.folders||[]} value={currentLocation} disabled={busy||organizationBusy||categoriesLoading||!!categoriesError} onSelect={selectCategory}/>{#if categoriesLoading}<p role="status">正在更新目录…</p>{/if}{#if categoriesError}<div role="alert"><p>{categoriesError}</p><button on:click={refreshCategories}>重新加载目录</button></div>{/if}<label>标签<input disabled={busy} placeholder="CUDA, GPU, 学习笔记" bind:value={current.tags} on:input={changed}/></label><div class="property-divider"></div><h4>保存与发布</h4><p>修改会自动保存到{storageLabel}，等待显示“已保存到{storageLabel}”后再离开。</p><div class="private-note">◈ 草稿与博客仓库分开保存<br/><span>自动保存保持私密，确认发布后才公开。</span></div><button class="wide" on:click={showImport}>⌘ 浏览我的笔记</button></aside>{/if}</div>
+          </div>{#if settingsOpen}<aside class="properties"><h3>文章设置</h3><CategoryPicker folders={organization?.folders||[]} value={currentLocation} disabled={busy||organizationBusy||categoriesLoading||!!categoriesError} onSelect={selectCategory}/>{#if categoriesLoading}<p role="status">正在更新目录…</p>{/if}{#if categoriesError}<div role="alert"><p>{categoriesError}</p><button on:click={refreshCategories}>重新加载目录</button></div>{/if}<label>标签<textarea class="tags-input" rows="1" disabled={busy} placeholder="CUDA, GPU, 学习笔记" bind:value={current.tags} use:autogrow={current.tags} on:input={changed}></textarea></label><CoverPicker value={articleCover(current).value} src={coverSource(current)} disabled={busy||uploading||conflict} onUpload={uploadImage} onChange={value=>{current.cover=value;changed();}} onUploadState={active=>uploading=active}/><div class="property-divider"></div><h4>保存与发布</h4><p>修改会自动保存到{storageLabel}，等待显示“已保存到{storageLabel}”后再离开。</p><div class="private-note">◈ 草稿与博客仓库分开保存<br/><span>自动保存保持私密，确认发布后才公开。</span></div><button class="wide" on:click={showImport}>⌘ 浏览我的笔记</button></aside>{/if}</div>
       </section>
     {/if}
   </div>
@@ -1220,7 +1242,7 @@ function escapeHtml(s) {
   <div class="overlay" use:portal role="presentation" on:click={e=>{if(dialog!=='publish'&&e.target===e.currentTarget&&!publishing&&!busy)dialog='';}}>
     <div class="modal card-base" class:import-modal={dialog==='import'} class:publication-modal={dialog==='publish'} role="dialog" aria-modal="true" aria-label={dialog==='draft-action'?'草稿操作确认':dialog==='import'?'从笔记导入':dialog==='publish'?'预览与发布':'预览说明'} tabindex="-1"><div class="modal-heading"><div><span class="eyebrow">wonder · 写作空间</span><h2>{dialog==='draft-action'?(pendingAction?.action==='purge'?'彻底删除草稿？':'移入回收站？'):dialog==='import'?'从笔记里，挑一个想法。':dialog==='publish'?'预览与发布':dialog==='account'?(serverMode?'GitHub 账号':'当前使用本机写作'):'草稿保存说明'}</h2></div><button aria-label="关闭弹窗" disabled={publishing||busy} on:click={()=>dialog=''}>✕</button></div>
     {#if dialog==='draft-action'&&pendingAction}<p class="modal-copy">{pendingAction.article.title||'未命名文章'}</p><p class="modal-copy">{pendingAction.action==='purge'?'彻底删除后，无法从回收站恢复此草稿。此操作不会删除博客原文或其他草稿共用的图片。':'正文和图片引用会保留，可在回收站恢复。此操作不会删除已发布的博客原文。'}</p><div class="modal-footer"><button disabled={busy} on:click={()=>dialog=''}>取消</button><button class:danger={pendingAction.action==='purge'} disabled={busy} on:click={()=>manageDraft(pendingAction.article,pendingAction.action)}>{busy?'正在处理…':pendingAction.action==='purge'?'确认彻底删除':'确认移入回收站'}</button></div>
-    {:else if dialog==='import'}<div class="import-tools"><label class="search">⌕ <input aria-label="搜索笔记" placeholder="搜索笔记名称或目录…" bind:value={noteQuery}/></label><select aria-label="笔记目录" bind:value={folder}><option value="all">全部目录 · {notes.length} 篇</option>{#each folders as f}<option value={f}>{f}</option>{/each}</select></div><div class="import-body"><div class="note-list">{#each found as n}<button class:chosen={selected?.id===n.id} on:click={()=>selected=n}><span>{n.title}</span><small>{n.folder}</small>{#if sourcePairs[n.id]}<em>已关联博客</em>{/if}</button>{/each}{#if !found.length}<p class="empty">没有匹配的笔记</p>{/if}</div><div class="note-detail">{#if selected}<span class="category">{selected.folder}</span><h2>{selected.title}</h2><article class="prose">{@html notePreview}</article>{/if}</div></div><div class="modal-footer"><span>正文与图片一起预览，原笔记保持不变。</span><button class="primary" disabled={!selected||busy||loading} on:click={importNote}>{selected&&(sourcePairs[selected.id]||items.some(a=>a.noteId===selected.id))?'打开已有文章':'导入并保存草稿'} →</button></div>
+    {:else if dialog==='import'}<div class="import-tools"><label class="search">⌕ <input aria-label="搜索笔记" placeholder="搜索笔记名称或目录…" bind:value={noteQuery}/></label><select aria-label="笔记目录" bind:value={folder}><option value="all">全部目录 · {notes.length} 篇</option>{#each folders as f}<option value={f}>{f}</option>{/each}</select></div><div class="import-body"><div class="note-list">{#each found as n}<button class:chosen={selected?.id===n.id} on:click={()=>selected=n}><span>{n.title}</span><small>{n.folder}</small>{#if sourcePairs[n.id]}<em>已关联博客</em>{/if}</button>{/each}{#if !found.length}<p class="empty">没有匹配的笔记</p>{/if}</div><div class="note-detail">{#if selected}<span class="category">{selected.folder}</span><h2>{selected.title}</h2><article class="prose" use:githubCards={notePreview}>{@html notePreview}</article>{/if}</div></div><div class="modal-footer"><span>正文与图片一起预览，原笔记保持不变。</span><button class="primary" disabled={!selected||busy||loading} on:click={importNote}>{selected&&(sourcePairs[selected.id]||items.some(a=>a.noteId===selected.id))?'打开已有文章':'导入并保存草稿'} →</button></div>
     {:else if dialog==='publish'}
       {#if !publishInfo}<p class="modal-copy">{publishing?'正在读取发布设置…':'发布设置尚未加载。'}</p>
       {:else if !publishInfo.available}<p class="modal-copy">草稿已保存。服务器尚未配置发布服务，配置后即可在这里生成预览并发布。</p>
@@ -1365,7 +1387,8 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
 .prose :global(.katex-display) { overflow:auto; }
 .properties h3 { font-size:1rem; font-weight:700; margin:.5rem 0 1.2rem; }
 .properties label { display:block; font-size:.8rem; margin:1rem 0 .5rem; }
-.properties input { width:100%; font-size:.8rem; margin-top:.5rem; }
+.tags-input{display:block;box-sizing:border-box;resize:none;overflow:hidden;overflow-wrap:anywhere;line-height:1.7;padding:.75rem;border:1px solid var(--line-divider);border-radius:.6rem;background:var(--card-bg);color:var(--studio-text);}
+.properties input,.properties .tags-input { width:100%; font-size:.8rem; margin-top:.5rem; }
 .properties p { font-size:.75rem; color:var(--content-meta); line-height:1.8; }
 .property-divider { height:1px; background:var(--line-divider); margin:1.5rem 0; }
 .properties h4 { font-size:.85rem; font-weight:600; margin-bottom:.7rem; }
@@ -1416,7 +1439,7 @@ footer { display:flex; justify-content:space-between; font-size:.75rem; color:va
 
  footer { font-size:.7rem; }footer span { display:none; }
  .editor { padding:1rem; }.editor-top { gap:.5rem; }.save-status { font-size:.65rem; }.editor-actions { width:100%; justify-content:flex-end; }.editor-heading { padding:1.2rem 0; }.title-input { font-size:1.5rem; }
- .properties { gap:.6rem; }.properties input { font-size:.75rem; }
+ .properties { gap:.6rem; }.properties input,.properties .tags-input { font-size:.75rem; }
  .overlay { padding:.7rem; }.modal { padding:1.1rem; max-height:94vh; }.modal-heading h2 { font-size:1.15rem; }.import-tools { flex-direction:column; gap:.5rem; }.import-tools select { max-width:100%; }.import-tools input { max-width:none; }
  .import-body { height:50vh; grid-template-columns:120px minmax(0,1fr); }.note-list { padding:.2rem; }.note-list button { padding:.6rem .4rem; }.note-list span { font-size:.7rem; }.note-list small { font-size:.6rem; overflow-wrap:anywhere; }.note-detail { padding:.8rem; }.note-detail>h2 { font-size:1.1rem; }.note-detail .prose { font-size:.75rem; }
  .modal-footer { flex-direction:column; align-items:stretch; gap:.6rem; }.modal-footer>span { font-size:.7rem; }

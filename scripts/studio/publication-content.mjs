@@ -15,12 +15,28 @@ export function publicationContent(draft,input,{previous='',media,expectedHash,e
   if(!draft.title.trim()||!draft.body.trim())fail('请先填写文章标题和正文。');
   const target=articlePath(input.path);
   if(expectedHash ? digest(previous)!==expectedHash : !!previous)throw new StoreError(409,'博客文章已有变化或路径已被占用，请先核对仓库内容，不能覆盖。');
-  const {data}=matter(previous);
+  const data={...matter(previous).data};
   if(data.password)fail('加密文章暂不支持网页发布，请沿用本地编辑流程。');
   if(!/^\d{4}-\d{2}-\d{2}$/.test(input.published||'')||!Number.isFinite(Date.parse(input.published))||new Date(input.published).toISOString().slice(0,10)!==input.published)fail('请选择有效的发布日期。');
   if(typeof input.description!=='string'||input.description.length>1000)fail('摘要最多 1000 个字符。');
   const images=new Map(), warnings=[];
   const extension={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/avif':'avif'};
+  function publishImage(href,allowHttp=false) {
+      if(/^https:\/\//i.test(href)||(allowHttp&&/^http:\/\//i.test(href))){warnings.push('含外部图片，发布后仍依赖原图片网站。');return href;}
+      const ref=draft.assets?.[href]||href;
+      const id=ref.match(/^\/studio-api\/media\/([a-f\d]{64})\/?$/)?.[1];
+      if(!id)fail('有图片尚未保存到草稿库，请重新上传后再检查。');
+      const image=media(id),ext=extension[image.mime];
+      if(!ext||digest(image.bytes)!==id)fail('图片校验失败，请重新上传。');
+      const retained=existingImage?.(href,image);
+      const relative=retained||`assets/${path.posix.basename(target,'.md')}/${id}.${ext}`;
+      if(!retained)images.set(path.posix.join(path.posix.dirname(target),relative),Buffer.from(image.bytes));
+      return relative;
+  }
+  if(draft.cover!=null) {
+    const cover=draft.cover;
+    data.image=(!cover||cover==='api'||(/^\/(?!\/)/.test(cover)&&!cover.startsWith('/studio-api/')))?cover:publishImage(cover,true);
+  }
   const tokens=marked.lexer(draft.body);
   // Rewrite only parsed image syntax, never code examples or unrelated prose.
   let cursor=0;
@@ -33,15 +49,8 @@ export function publicationContent(draft,input,{previous='',media,expectedHash,e
       if(token.type==='html')fail('发布检查暂不支持原始 HTML，请改用 Markdown 语法。');
       if(token.type==='codespan'){replacements.push([token.raw,token.raw]);return;}
       if(token.type!=='image')return;
-      if(/^https:\/\//i.test(token.href)){warnings.push('含外部图片，发布后仍依赖原图片网站。');return;}
-      const ref=draft.assets?.[token.href]||token.href;
-      const id=ref.match(/^\/studio-api\/media\/([a-f\d]{64})\/?$/)?.[1];
-      if(!id)fail('有图片尚未保存到草稿库，请重新上传后再检查。');
-      const image=media(id),ext=extension[image.mime];
-      if(!ext||digest(image.bytes)!==id)fail('图片校验失败，请重新上传。');
-      const retained=existingImage?.(token.href,image);
-      const relative=retained||`assets/${path.posix.basename(target,'.md')}/${id}.${ext}`;
-      if(!retained)images.set(path.posix.join(path.posix.dirname(target),relative),Buffer.from(image.bytes));
+      const relative=publishImage(token.href);
+      if(relative===token.href)return;
       const alt=String(token.text).replace(/[\[\]\\\r\n]/g,' '),title=token.title?' '+JSON.stringify(token.title):'';
       replacements.push([token.raw,`![${alt}](${relative}${title})`]);
     });

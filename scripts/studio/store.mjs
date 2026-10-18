@@ -21,6 +21,10 @@ function fields(input) {
     if (typeof input[key] !== 'string' || input[key].length > max) fail(400, `字段 ${key} 缺失或过长`);
     result[key] = input[key];
   }
+  if (input.cover !== undefined) {
+    if (input.cover !== null && (typeof input.cover !== 'string' || input.cover.length > 2000 || /[\r\n\x00]/.test(input.cover) || /^(?!https?:)[a-z][\w+.-]*:|^\/\//i.test(input.cover))) fail(400, '封面地址无效');
+    result.cover = input.cover;
+  }
   return result;
 }
 function imageType(bytes) {
@@ -43,22 +47,23 @@ export function openStore({ dataDir, sourceRoots = {} }) {
     assets_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
   ); CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, mime TEXT NOT NULL, bytes BLOB NOT NULL);
   `);
-  // One consistent snapshot before the additive v1/v2 -> v3 migration.
   const needsTrash=!db.prepare('PRAGMA table_info(drafts)').all().some(c=>c.name==='deleted_at');
   const needsBindings=!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='article_bindings'").get();
   const needsOrganization=!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='organization'").get();
-  if(needsTrash||needsOrganization||needsBindings||!db.prepare('PRAGMA table_info(drafts)').all().some(c=>c.name==='article_id')){
+  const needsCover=!db.prepare('PRAGMA table_info(drafts)').all().some(c=>c.name==='cover');
+  if(needsCover||needsTrash||needsOrganization||needsBindings||!db.prepare('PRAGMA table_info(drafts)').all().some(c=>c.name==='article_id')){
     if(db.prepare('SELECT COUNT(*) n FROM drafts').get().n)backup();
     transaction(()=>{
       if(needsTrash)db.exec('ALTER TABLE drafts ADD COLUMN deleted_at TEXT');
       if(needsOrganization)db.exec('CREATE TABLE organization (id INTEGER PRIMARY KEY CHECK(id=1), state_json TEXT NOT NULL, undo_json TEXT)');
       if(needsBindings)db.exec('CREATE TABLE article_bindings (article_id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, route TEXT NOT NULL, hash TEXT NOT NULL, task TEXT, aliases_json TEXT NOT NULL)');
       if(!db.prepare('PRAGMA table_info(drafts)').all().some(c=>c.name==='article_id')){db.exec('ALTER TABLE drafts ADD COLUMN article_id TEXT');for(const row of db.prepare('SELECT id FROM drafts').all())db.prepare('UPDATE drafts SET article_id=? WHERE id=?').run(randomUUID(),row.id);}
-      db.exec('PRAGMA user_version=4');
+      if(needsCover)db.exec('ALTER TABLE drafts ADD COLUMN cover TEXT');
+      db.exec('PRAGMA user_version=5');
     });
   }
   fs.chmodSync(filename,0o600);
-  const decode = row => row ? ({id:row.id,revision:row.revision,title:row.title,body:row.body,category:row.category,tags:row.tags,
+  const decode = row => row ? ({id:row.id,revision:row.revision,title:row.title,body:row.body,category:row.category,tags:row.tags,cover:row.cover,
     articleId:(row.source_json?JSON.parse(row.source_json).articleId:null)||row.article_id,
     source:row.source_json?JSON.parse(row.source_json):null,assets:JSON.parse(row.assets_json),createdAt:row.created_at,updatedAt:row.updated_at,deletedAt:row.deleted_at||null,status:'draft',persisted:true}) : null;
   function get(id) { if(!uuid.test(id)) fail(400,'无效的草稿编号'); const d=decode(db.prepare('SELECT * FROM drafts WHERE id=?').get(id));if(!d)fail(404,'草稿不存在');return d; }
@@ -76,10 +81,12 @@ export function openStore({ dataDir, sourceRoots = {} }) {
     if(!file.startsWith(root+path.sep)||!/\.mdx?$/.test(file))fail(400,'来源必须是文章目录内的 Markdown 文件');
     return {root,file};
   }
-  function snapshotAssets(body, source, existing = {}) {
+  function snapshotAssets(body, source, existing = {}, cover = null) {
     const assets={...existing};
     // Parse Markdown tokens so code examples are not treated as attachments.
-    marked.walkTokens(marked.lexer(body), token => {
+    const tokens=marked.lexer(body);
+    if(cover && cover!=='api' && (!cover.startsWith('/') || cover.startsWith('/studio-api/media/')))tokens.push({type:'image',href:cover});
+    marked.walkTokens(tokens, token => {
       if(token.type!=='image')return;
       const href=token.href;
       if(/^https?:\/\//i.test(href))return;
@@ -198,11 +205,25 @@ export function openStore({ dataDir, sourceRoots = {} }) {
           if(target!==null&&!placement.folders.some(f=>f.id===target))fail(404,'目标目录不存在。');
           placement.placements['draft:'+id]=target;placement.revision++;placement.undoToken=null;
         }
-        if(source){source.referencePath=source.path;const b=this.bindings().find(b=>b.path===source.path);if(source.root==='blog')source.articleId=b?.articleId||articleIdentity(source.path,matter(fs.readFileSync(resolveSource(source).file,'utf8')).data);}
-        if(source)source.baseHash=createHash('sha256').update(fs.readFileSync(resolveSource(source).file)).digest('hex');
-        const assets=snapshotAssets(value.body,source,input.copyFrom?get(input.copyFrom).assets:{});const now=new Date().toISOString();
+        const copied=input.copyFrom?get(input.copyFrom):null;
+        const sourceBytes=source?fs.readFileSync(resolveSource(source).file):null;
+        const sourceData=sourceBytes?matter(sourceBytes.toString()).data:null;
+        if(source){
+          source.referencePath=source.path;
+          const binding=this.bindings().find(b=>b.path===source.path);
+          if(source.root==='blog')source.articleId=binding?.articleId||articleIdentity(source.path,sourceData);
+          source.baseHash=createHash('sha256').update(sourceBytes).digest('hex');
+        }
+        if(value.cover==null&&source)value.cover=String(sourceData.image||'');
+        if(value.cover==null&&copied)value.cover=copied.cover;
+        if(value.cover==null&&copied?.source){
+          // A retained draft must remain copyable after its original file moves away.
+          try{value.cover=String(matter(fs.readFileSync(resolveSource(copied.source).file,'utf8')).data.image||'');}
+          catch(error){if(!(error instanceof StoreError)&&!['ENOENT','ENOTDIR','EACCES','EPERM'].includes(error.code))throw error;}
+        }
+        const assets=snapshotAssets(value.body,source||copied?.source,copied?.assets||{},value.cover);const now=new Date().toISOString();
         db.prepare('INSERT INTO drafts(id,revision,title,body,category,tags,source_key,source_json,assets_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,1,value.title,value.body,value.category,value.tags,key,source?JSON.stringify(source):null,JSON.stringify(assets),now,now);
-        db.prepare('UPDATE drafts SET article_id=? WHERE id=?').run(source?.articleId||randomUUID(),id);
+        db.prepare('UPDATE drafts SET article_id=?,cover=? WHERE id=?').run(source?.articleId||randomUUID(),value.cover??'',id);
         if(placement)db.prepare('INSERT INTO organization(id,state_json,undo_json) VALUES(1,?,NULL) ON CONFLICT(id) DO UPDATE SET state_json=excluded.state_json,undo_json=NULL').run(JSON.stringify(placement));
         return get(id);
       });
@@ -212,8 +233,9 @@ export function openStore({ dataDir, sourceRoots = {} }) {
       beforeWrite();
       return transaction(()=>{
         const old=get(id);if(old.deletedAt)fail(409,'这篇草稿已移入回收站。请先恢复，或将当前修改另存副本。');if(old.revision!==input.revision)fail(409,'另一页面已保存新版。你的修改仍保留在当前页面，请另存副本后再比较。');
-        const assets=snapshotAssets(value.body,old.source,old.assets);
-        db.prepare('UPDATE drafts SET revision=revision+1,title=?,body=?,category=?,tags=?,assets_json=?,updated_at=? WHERE id=?').run(value.title,value.body,value.category,value.tags,JSON.stringify(assets),new Date().toISOString(),id);
+        const cover=value.cover===undefined?old.cover:value.cover;
+        const assets=snapshotAssets(value.body,old.source,old.assets,cover);
+        db.prepare('UPDATE drafts SET revision=revision+1,title=?,body=?,category=?,tags=?,cover=?,assets_json=?,updated_at=? WHERE id=?').run(value.title,value.body,value.category,value.tags,cover,JSON.stringify(assets),new Date().toISOString(),id);
         return get(id);
       });
     },

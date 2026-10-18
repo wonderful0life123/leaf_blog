@@ -110,7 +110,7 @@ export function planArticleChanges(work,selections){
     const from=s?.referencePath||p.path;
     const resolve=referenceResolver(from,target,moves,routeMoves,{skipImages:!!s?.text});
     const content=rewriteReferences(parsed.content,resolve);
-    if(data.image&&data.image!=='api')data.image=referenceResolver(p.path,target,moves,routeMoves)(data.image,'image');
+    if(data.image&&data.image!=='api'&&!s?.coverResolved)data.image=referenceResolver(p.path,target,moves,routeMoves)(data.image,'image');
     if(s){
       data.articleId=s.articleId;data.slug=routeFromPath(target);data.category=path.posix.dirname(target)==='.'?'':path.posix.dirname(target);
       delete archive.paths[p.route];delete archive.paths[routeFromPath(target)];

@@ -1,4 +1,5 @@
 <script>
+  import {githubCards} from "./github-card.mjs";
   import TableEditor from './TableEditor.svelte';
   import StudioMenu from './StudioMenu.svelte';
   import Icon from '../common/Icon.svelte';
@@ -317,7 +318,7 @@
       {#if mode==='split'}
         <div class="split-handle" role="separator" tabindex="0" aria-label="调整编辑与预览比例" aria-orientation={verticalSplit?'horizontal':'vertical'} aria-valuemin="25" aria-valuemax="75" aria-valuenow={Math.round(prefs.splitRatio)} aria-valuetext={`编辑区 ${Math.round(prefs.splitRatio)}%，预览区 ${100-Math.round(prefs.splitRatio)}%`} title="拖动调整比例；双击或按 Enter 恢复均分" on:pointerdown={startResize} on:pointermove={moveResize} on:pointerup={endResize} on:pointercancel={endResize} on:lostpointercapture={endResize} on:keydown={splitKey} on:dblclick={resetSplit}></div>
       {/if}
-      {#if mode==='split'||mode==='preview'}<article class="writing-preview" class:wide={prefs.wide} bind:this={previewPane} aria-label="文章预览">{#if value}<div>{@html preview}</div>{:else}<p class="preview-hint">你的文字，会在这里慢慢成形。</p>{/if}</article>{/if}
+      {#if mode==='split'||mode==='preview'}<article class="writing-preview" class:wide={prefs.wide} bind:this={previewPane} aria-label="文章预览">{#if value}<div use:githubCards={preview}>{@html preview}</div>{:else}<p class="preview-hint">你的文字，会在这里慢慢成形。</p>{/if}</article>{/if}
     </div>
   </div>
   <div class="writing-status"><span>{value.length.toLocaleString()} 字符 · 第 {line} 行，第 {column} 列</span><span class="keyboard-hint">{mode==='live'?'点击文字编辑语法':'Markdown'} · Tab 缩进 · Esc 后 Tab 离开编辑器</span><span>{uploading?'图片上传中…':'图片可粘贴或拖入'}</span></div>

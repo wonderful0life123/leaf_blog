@@ -16,9 +16,10 @@ for(const warmed of [false,true])test(warmed?'服务预热后单篇预览首次�
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'wonder-fast-preview-')),dataDir=path.join(root,'data');
  const store=openStore({dataDir});t.after(()=>{store.close();fs.rmSync(root,{recursive:true,force:true});});
  const image=store.upload(png);
- let draft=store.create({title:'<安全的标题>',body:'## 快速预览\n\n```python title="hello.py"\nprint("hello")\n```\n\n$E=mc^2$\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n![pixel]('+image.url+')\n\n> [!NOTE]\n> 提示内容\n',category:'技术',tags:'测试'});
+ let draft=store.create({title:'<安全的标题>',body:'## 快速预览\n\n::github{repo="CuteLeaf/Firefly"}\n\n```python title="hello.py"\nprint("hello")\n```\n\n$E=mc^2$\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\n![pixel]('+image.url+')\n\n> [!NOTE]\n> 提示内容\n',category:'技术',tags:'测试',cover:image.url});
  const fixtureRepo=path.join(root,'repo');fs.mkdirSync(path.join(fixtureRepo,'src/content'),{recursive:true});
  fs.cpSync(path.join(repo,'src/content/posts'),path.join(fixtureRepo,'src/content/posts'),{recursive:true});
+ fs.mkdirSync(path.join(fixtureRepo,'public/gallery'),{recursive:true});fs.writeFileSync(path.join(fixtureRepo,'public/gallery/cover.png'),png);
  fs.copyFileSync(path.join(repo,'pnpm-lock.yaml'),path.join(fixtureRepo,'pnpm-lock.yaml'));
  const git=args=>execFileSync('git',args,{cwd:fixtureRepo,stdio:'pipe'});
  git(['init']);git(['add','.']);git(['-c','user.name=Preview test','-c','user.email=test@example.invalid','commit','-m','Isolated preview fixture']);
@@ -29,13 +30,15 @@ for(const warmed of [false,true])test(warmed?'服务预热后单篇预览首次�
  const manager=openPublications({dataDir,store,config:{repoDir:fixtureRepo,enabled:false},adapter:driver});
  const timings=[];
  for(let i=0;i<3;i++){
-  if(i===1)draft=store.update(draft.id,{...draft,body:draft.body+'\n正文修改后的内容\n'});
+  if(i===1)draft=store.update(draft.id,{...draft,body:draft.body+'\n正文修改后的内容\n',cover:'/gallery/cover.png'});
   const started=performance.now(),job=await ready(manager,manager.prepare(draft.id,{revision:draft.revision,path:'writing/fast.md',description:'摘要',published:'2026-10-13'}).id);
   assert.equal(job.state,'ready',job.error);assert.equal(job.previewOnly,true);assert.equal(job.reused,i===2);
   timings.push(Math.round(performance.now()-started));
   assert.ok(timings.at(-1)<(warmed?3000:10000));assert.ok(!fs.existsSync(path.join(dataDir,'publications',job.id,'work/dist')));
   const html=manager.preview(job.id,'posts/fast/').bytes.toString(),doc=parse(html);
   assert.ok(html.includes('expressive-code'));assert.ok(html.includes('katex'));assert.ok(doc.querySelector('table'));assert.ok(html.includes('提示内容'));
+  assert.ok(doc.querySelector('.card-github'));assert.ok(html.includes('查看 GitHub 仓库'));assert.ok(!html.includes('fetch-waiting'));
+  assert.equal(doc.querySelector('.preview-cover').getAttribute('alt'),'文章封面');
   assert.equal(doc.querySelector('h1').textContent,'<安全的标题>');assert.ok(!doc.querySelector('script'));assert.ok(!html.includes('__ASTRO_IMAGE_'));assert.ok(!html.includes('/studio-api/media/'));
   if(i>0)assert.ok(html.includes('正文修改后的内容'));
   const prefix=`/studio-api/publications/${job.id}/preview/`;

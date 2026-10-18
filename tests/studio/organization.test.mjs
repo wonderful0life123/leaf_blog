@@ -24,7 +24,7 @@ test('目录移动持久保存、撤销与重启，不改正文、路径、图�
  const undone=store.undoOrganization({revision:nested.revision,token:nested.undoToken},items);
  assert.equal(folderPath(undone.folders,'folder:学习/CUDA'),'学习 / CUDA');assert.equal(articleFolder(draft,undone),'folder:学习/CUDA');
  assert.throws(()=>store.undoOrganization({revision:undone.revision,token:nested.undoToken},items),e=>e.status===409);
- const snapshot=store.backup(),db=new DatabaseSync(snapshot);assert.equal(db.prepare('PRAGMA user_version').get().user_version,4);assert.equal(JSON.parse(db.prepare('SELECT state_json FROM organization').get().state_json).revision,undone.revision);db.close();
+ const snapshot=store.backup(),db=new DatabaseSync(snapshot);assert.equal(db.prepare('PRAGMA user_version').get().user_version,5);assert.equal(JSON.parse(db.prepare('SELECT state_json FROM organization').get().state_json).revision,undone.revision);db.close();
 });
 test('移动禁止循环、相同父级、同名目录合并、失效目标及不存在文章',()=>{
  const initial=seedOrganization(null,articles);

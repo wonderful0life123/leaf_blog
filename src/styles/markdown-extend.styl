@@ -641,3 +641,19 @@ a.card-github.fetch-error
     width: 32px
     height: 32px
     font-size: 16px
+
+// Repository names and metadata must fit the writing sidebar and narrow screens.
+a.card-github
+  overflow-wrap: anywhere
+  .gc-titlebar-left, .gc-infobar
+    flex-wrap: wrap
+  .gc-titlebar-left
+    min-width: 0
+  .gc-infobar
+    max-width: 100%
+    gap: .5rem 1.2rem
+.cm-live-github
+  display: block
+  a.card-github
+    cursor: text
+    white-space: normal

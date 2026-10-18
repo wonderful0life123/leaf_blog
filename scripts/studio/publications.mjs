@@ -119,7 +119,7 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
         if(!binding&&!published)return draft;
         const original=originals.get(binding?.articleId||draft.articleId);
         const changed=original?hasChanges(draft,original):published?.revision!==draft.revision;
-        return {...draft,articleId:binding?.articleId||draft.source?.articleId,status:changed?'draft':'published',hasUnpublishedChanges:changed,publication:{revision:published?.revision,path:binding?.path||published.path,url:binding?postUrl(binding.route):published.url,commit:published?.commit}};
+        return {...draft,cover:draft.cover??original?.cover??'',articleId:binding?.articleId||draft.source?.articleId,status:changed?'draft':'published',hasUnpublishedChanges:changed,publication:{revision:published?.revision,path:binding?.path||published.path,url:binding?postUrl(binding.route):published.url,commit:published?.commit}};
       });
     },
     info(draftId){
@@ -165,7 +165,7 @@ export function openPublications({dataDir,store,config,adapter,sourceRoots}){
             if(!oldPath||href.startsWith('/')||/^[a-z]+:/i.test(href))return null;
             try{const source=fs.realpathSync(path.resolve(posts,path.posix.dirname(draft.source?.referencePath||oldPath),decodeURIComponent(href.split(/[?#]/)[0])));if(!source.startsWith(fs.realpathSync(posts)+path.sep)||digest(fs.readFileSync(source))!==digest(image.bytes))return null;return path.posix.relative(path.posix.dirname(path.join(posts,target)),source).split('/').map(p=>p==='..'?'..':encodeURIComponent(p)).join('/');}catch{return null;}
           }});
-          const plan=planArticleChanges(workspace,[{articleId,oldPath,path:target,text:content.text,draftId,referencePath:draft.source?.referencePath||oldPath||target}]);
+          const plan=planArticleChanges(workspace,[{articleId,oldPath,path:target,text:content.text,draftId,coverResolved:draft.cover!=null,referencePath:draft.source?.referencePath||oldPath||target}]);
           applyPlan(workspace,job,plan);
           for(const image of content.images)writeContent(posts,image.path,image.bytes);
           job.files=[...new Set([...job.files,...content.images.map(i=>'src/content/posts/'+i.path)])];

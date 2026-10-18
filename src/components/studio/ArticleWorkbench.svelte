@@ -1,5 +1,6 @@
 <script>
 import { onMount, tick } from "svelte";
+import { githubCards } from "./github-card.mjs";
 import { readingCode } from "./reading-code.mjs";
 import StudioMenu from "./StudioMenu.svelte";
 import "./reading-code.css";
@@ -374,7 +375,7 @@ function cancelDrag() {
         {#if article}
           <article class="document"><div class="kicker">{articleStatus(article)}{#if pendingLocation(article)} · 目录待应用{/if}</div><h2>{article.title||'未命名文章'}</h2><div class="metadata"><span>所在目录 · {folderPath(workspace.folders,articleFolder(article,workspace))||'根目录'}</span>{#if article.updatedAt||article.date}<span>{displayDate(article.updatedAt||article.date)}</span>{/if}</div>
             {#if infoOpen}<dl class="file-info"><dt>文件位置</dt><dd>{blogPath(article)||'尚未指定博客路径，草稿独立保存'}</dd><dt>目标位置</dt><dd>{targetArticlePath(article,workspace)||'首次发布时确定文件名'}</dd>{#if article.publication?.url}<dt>已发布网址</dt><dd>{article.publication.url}</dd>{/if}<dt>编辑方式</dt><dd>{article.persisted?'打开已保存草稿':'编辑时创建草稿副本，发布前不修改博客原文'}</dd></dl>{/if}
-            {#if article.body}<div class="prose markdown-content" use:readingCode={html}>{@html html}</div>{:else}<p class="empty">还没有正文，点击“编辑文章”开始写作。</p>{/if}
+            {#if article.body}<div class="prose markdown-content" use:readingCode={html} use:githubCards={html}>{@html html}</div>{:else}<p class="empty">还没有正文，点击“编辑文章”开始写作。</p>{/if}
           </article>
         {:else if folder}
           <div class="document"><div class="kicker">{folder.unfiled?'草稿分组':'文件夹'}</div><h2>{folder.label}</h2><p class="folder-description">{folder.count} 篇文章{folder.unfiled?' · 尚未指定博客文件路径':''}</p><div class="folder-items">{#each folder.children as child (child.id)}<button on:click={()=>choose(child)}><span aria-hidden="true">{child.type==='folder'?'▱':'▤'}</span><span>{child.label}</span><small>{child.type==='folder'?child.count+' 篇':articleStatus(child.article)}</small><span aria-hidden="true">›</span></button>{/each}</div></div>

@@ -21,9 +21,13 @@ export function articlePreview(repo){
     marked.walkTokens(marked.lexer(content),token=>{if(token.type==='image')refs.push(token.href);});
     if(data.image&&data.image!=='api')refs.push(data.image);
     for(const href of new Set(refs)){
-      if(/^(?:https?:|\/)/i.test(href))continue;
-      const file=fs.realpathSync(path.resolve(path.dirname(path.join(workspace,article)),decodeURIComponent(href.split(/[?#]/)[0])));
-      if(!file.startsWith(posts+path.sep)||!/^\.(png|jpg|jpeg|gif|webp|avif)$/i.test(path.extname(file)))throw new StoreError(422,'预览图片路径无效');
+      if(/^https?:|^\/\//i.test(href))continue;
+      const publicCover=href===data.image&&href.startsWith('/');
+      if(href.startsWith('/')&&!publicCover)continue;
+      const imageRoot=publicCover?fs.realpathSync(path.join(workspace,'public')):posts;
+      const decoded=decodeURIComponent(href.split(/[?#]/)[0]);
+      const file=fs.realpathSync(publicCover?path.resolve(imageRoot,'.'+decoded):path.resolve(path.dirname(path.join(workspace,article)),decoded));
+      if(!file.startsWith(imageRoot+path.sep)||!/^\.(png|jpg|jpeg|gif|webp|avif)$/i.test(path.extname(file)))throw new StoreError(422,'预览图片路径无效');
       const filename=createHash('sha256').update(fs.readFileSync(file)).digest('hex')+path.extname(file);
       const target=path.join(previewDir,'preview-images',filename);fs.mkdirSync(path.dirname(target),{recursive:true});
       fs.copyFileSync(file,target);assets[href]='/preview-images/'+filename;

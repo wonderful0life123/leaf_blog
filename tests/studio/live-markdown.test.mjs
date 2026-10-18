@@ -107,3 +107,16 @@ test('纯文本代码不被模糊匹配为 TeX，保留字面量与空白',async
   assert.deepEqual(await codeSegments(code,language),[{text:code,classes:''}]);
  }
 });
+
+test('GitHub 指令显示卡片，点击编辑与撤销保留源码，代码示例不渲染',()=>{
+ const directive='::github{repo="CuteLeaf/Firefly"}';
+ const doc='开头\n\n'+directive+'\n\n结尾';
+ let state=stateFor(doc,{anchor:0},[history()]);
+ const card=rendered(state).find(x=>x.item.kind==='github');
+ assert.ok(card,'完整 GitHub 指令应显示仓库卡片');assert.equal(card.item.repo,'CuteLeaf/Firefly');
+ state=state.update({selection:{anchor:card.from+2}}).state;assert.ok(!rendered(state).some(x=>x.item.kind==='github'));assert.equal(state.doc.toString(),doc);
+ state=state.update({changes:{from:card.from,to:card.to,insert:'::github{repo="saicaca/fuwari"}'},userEvent:'input'}).state;
+ const command={get state(){return state;},dispatch:tr=>state=tr.state};assert(undo(command));assert.equal(state.doc.toString(),doc);
+ const examples='```md\n'+directive+'\n```\n\n`'+directive+'`\n\n\\'+directive+'\n\n::github{repo="../../bad"}\n\n::github{repo="unfinished';
+ assert.equal(livePlan(examples).filter(x=>x.kind==='github').length,0);
+});

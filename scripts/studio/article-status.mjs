@@ -44,7 +44,7 @@ export function contentComparison(postsRoot, bindings, parseBody = fromMarkdown)
       const media = asset.match(/^\/studio-api\/media\/([a-f\d]{64})\/?$/);
       if (media) return 'image:' + media[1];
     }
-    if (!href || href.startsWith('#') || /^(?:[a-z][\w+.-]*:|\/\/)/i.test(href)) return href;
+    if (!href || href==='api' || href.startsWith('#') || /^(?:[a-z][\w+.-]*:|\/\/)/i.test(href)) return href;
     const cut = href.search(/[?#]/), raw = cut < 0 ? href : href.slice(0, cut), suffix = cut < 0 ? '' : href.slice(cut);
     let decoded;
     try { decoded = decodeURIComponent(raw); } catch { return href; }
@@ -97,6 +97,7 @@ export function contentComparison(postsRoot, bindings, parseBody = fromMarkdown)
   return (draft, published) => {
     if (draft.title.trim() !== published.title.trim() || JSON.stringify(tags(draft.tags)) !== JSON.stringify(tags(published.tags))) return true;
     try {
+      if(draft.cover!=null && reference(draft.cover,'image',draft,draft.source?.referencePath||draft.source?.path||published.path)!==reference(published.cover||'','image',published,published.path))return true;
       return body(draft, draft.source?.referencePath || draft.source?.path || published.path) !== body(published, published.path);
     } catch { return true; }
   };
