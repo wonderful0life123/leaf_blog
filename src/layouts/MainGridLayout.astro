@@ -17,6 +17,7 @@ import {
 	live2dModelConfig,
 	sidebarLayoutConfig,
 	siteConfig,
+	spineModelConfig,
 } from "@/config";
 import {
 	BANNER_HEIGHT,
@@ -294,6 +295,11 @@ const bannerCarouselEnabledDefault =
 	backgroundWallpaper.banner?.carousel?.enable ?? false;
 const bannerCarouselSwitchable =
 	backgroundWallpaper.banner?.carousel?.switchable ?? false;
+const hasMultipleBannerImages =
+	backgroundImages.mobile.length > 1 || backgroundImages.desktop.length > 1;
+const needsBannerCarousel =
+	hasMultipleBannerImages &&
+	(bannerCarouselEnabledDefault || bannerCarouselSwitchable);
 const bannerCarouselInterval = Math.max(
 	backgroundWallpaper.banner?.carousel?.interval ?? 5000,
 	3000,
@@ -355,6 +361,7 @@ const bannerCarouselInterval = Math.max(
             <div class="banner-image-slot-mobile absolute inset-0 block lg:hidden">
                 <ImageWrapper
                     alt="Mobile background image of the blog"
+                    media="(width < 64rem)"
                     class="object-cover h-full w-full"
                     src={backgroundImages.mobile[0]}
                     position={backgroundWallpaper.banner?.position}
@@ -370,6 +377,7 @@ const bannerCarouselInterval = Math.max(
             <template class="banner-tpl-mobile">
                 <ImageWrapper
                     alt="Mobile background image of the blog"
+                    media="(width < 64rem)"
                     class="object-cover h-full w-full"
                     src={src}
                     position={backgroundWallpaper.banner?.position}
@@ -387,6 +395,7 @@ const bannerCarouselInterval = Math.max(
                 <ImageWrapper
                     id="banner"
                     alt="Desktop background image of the blog"
+                    media="(width >= 64rem)"
                     class="object-cover h-full"
                     src={backgroundImages.desktop[0]}
                     position={backgroundWallpaper.banner?.position}
@@ -403,6 +412,7 @@ const bannerCarouselInterval = Math.max(
                 <ImageWrapper
                     id="banner"
                     alt="Desktop background image of the blog"
+                    media="(width >= 64rem)"
                     class="object-cover h-full"
                     src={src}
                     position={backgroundWallpaper.banner?.position}
@@ -417,6 +427,7 @@ const bannerCarouselInterval = Math.max(
     </div>
 
     <!-- 客户端随机选择图片脚本 -->
+    {hasMultipleBannerImages && (
     <script is:inline data-swup-ignore-script>
         (function randomizeBannerImage() {
             var container = document.getElementById('banner-images-container');
@@ -467,8 +478,10 @@ const bannerCarouselInterval = Math.max(
             applyRandom('banner-image-slot-desktop', 'banner-tpl-desktop', window.__bannerRandomIndex.desktop);
         })();
     </script>
+    )}
 
     <!-- 横幅轮播 Ken Burns 样式（放在 body 中，不受 Swup head 替换影响） -->
+    {needsBannerCarousel && <>
     <Fragment set:html={`<style>
         @keyframes bannerKenBurns {
             0% { transform: scale(1); }
@@ -640,6 +653,7 @@ const bannerCarouselInterval = Math.max(
             startCarousel();
         })();
     </script>
+    </>}
     
     <div id="banner-dim-container" class="absolute inset-0 z-0 pointer-events-none">
         {showBannerDim && <div class="banner-dim-overlay absolute inset-0"></div>}
@@ -965,7 +979,7 @@ const bannerCarouselInterval = Math.max(
             </div>
         </div>
 
-        <SpineModel></SpineModel>
+        {spineModelConfig.enable && <SpineModel />}
         {live2dModelConfig.enable && <Live2DWidget config={live2dModelConfig} />}
     </div>
 </div>

@@ -3,6 +3,7 @@ import I18nKey from "@i18n/i18nKey";
 import { i18n } from "@i18n/translation";
 import { navigateToPage } from "@utils/navigation-utils";
 import { onMount } from "svelte";
+import { searchArticles } from "@/utils/search-client.mjs";
 import Icon from "@/components/common/Icon.svelte";
 import type { SearchResult } from "@/global";
 import { url as formatUrl, getSearchUrl } from "@/utils/url-utils";
@@ -12,8 +13,9 @@ let keywordDesktop = "";
 let keywordMobile = "";
 let result: SearchResult[] = [];
 let isSearching = false;
-let initialized = false;
-let debounceTimer: NodeJS.Timeout;
+let total = 0;
+let requestVersion = 0;
+let debounceTimer: ReturnType<typeof setTimeout>;
 
 // --- Mocks for Dev Mode ---
 const fakeResult: SearchResult[] = [
@@ -37,20 +39,19 @@ const togglePanel = () => {
 		?.classList.toggle("float-panel-closed");
 };
 
-const setPanelVisibility = (show: boolean, isDesktop: boolean): void => {
+const setPanelVisibility = (show: boolean): void => {
 	const panel = document.getElementById("search-panel");
-	if (
-		!panel ||
-		(isDesktop && !keywordDesktop) ||
-		(!isDesktop && !keywordMobile)
-	)
-		return;
+	if (!panel) return;
 	show
 		? panel.classList.remove("float-panel-closed")
 		: panel.classList.add("float-panel-closed");
 };
 
 const closeSearchPanel = (): void => {
+	requestVersion++;
+	clearTimeout(debounceTimer);
+	isSearching = false;
+	total = 0;
 	document.getElementById("search-panel")?.classList.add("float-panel-closed");
 	keywordDesktop = "";
 	keywordMobile = "";
@@ -64,76 +65,47 @@ const handleResultClick = (event: Event, url: string): void => {
 };
 
 // --- Core Search Logic ---
-const search = async (keyword: string, isDesktop: boolean): Promise<void> => {
-	if (!keyword) {
-		setPanelVisibility(false, isDesktop);
+const search = (keyword: string, isDesktop = true): void => {
+	clearTimeout(debounceTimer);
+	const version = ++requestVersion;
+	if (!keyword.trim()) {
+		if (isDesktop) setPanelVisibility(false);
 		result = [];
+		total = 0;
+		isSearching = false;
 		return;
 	}
-	if (!initialized) return;
-
 	isSearching = true;
-
-	clearTimeout(debounceTimer);
+	setPanelVisibility(true);
 	debounceTimer = setTimeout(async () => {
 		try {
-			let searchResults: SearchResult[] = [];
-
-			if (import.meta.env.PROD && window.pagefind) {
-				const response = await window.pagefind.search(keyword);
-				searchResults = await Promise.all(
-					response.results.map((item) => item.data()),
-				);
-			} else if (import.meta.env.DEV) {
-				searchResults = fakeResult;
-			}
-
-			result = searchResults;
-			setPanelVisibility(true, isDesktop);
+			const response = import.meta.env.DEV
+				? { results: fakeResult, total: fakeResult.length }
+				: await searchArticles(keyword, 5);
+			if (version !== requestVersion) return;
+			result = response.results;
+			total = response.total;
+			setPanelVisibility(true);
 		} catch (error) {
+			if (version !== requestVersion) return;
 			console.error("Search error:", error);
 			result = [];
-			setPanelVisibility(false, isDesktop);
+			total = 0;
+			setPanelVisibility(false);
 		} finally {
-			isSearching = false;
+			if (version === requestVersion) isSearching = false;
 		}
-	}, 300); // 300ms debounce
+	}, 300);
 };
 
-// --- Initialization onMount ---
 onMount(() => {
-	const initializePagefind = () => {
-		initialized = true;
-		if (keywordDesktop) search(keywordDesktop, true);
-		if (keywordMobile) search(keywordMobile, false);
+	return () => {
+		requestVersion++;
+		clearTimeout(debounceTimer);
 	};
-
-	if (import.meta.env.DEV) {
-		console.log("Pagefind mock enabled in development mode.");
-		initializePagefind();
-	} else {
-		if (window.pagefind) {
-			// If script already loaded
-			initializePagefind();
-		} else {
-			// Listen for the event
-			document.addEventListener("pagefindready", initializePagefind, {
-				once: true,
-			});
-			document.addEventListener("pagefindloaderror", initializePagefind, {
-				once: true,
-			});
-		}
-	}
 });
 
-// --- Reactive Statements ---
-$: if (initialized && (keywordDesktop || keywordDesktop === "")) {
-	search(keywordDesktop, true);
-}
-$: if (initialized && (keywordMobile || keywordMobile === "")) {
-	search(keywordMobile, false);
-}
+// The two responsive inputs share one result panel; editing one cancels older work.
 </script>
 
 <!-- search bar for desktop view -->
@@ -144,7 +116,8 @@ $: if (initialized && (keywordMobile || keywordMobile === "")) {
     <Icon icon="material-symbols:search"
           class="absolute text-[1.25rem] pointer-events-none ml-3 transition my-auto text-black/30 dark:text-white/30"></Icon>
     <input placeholder="{i18n(I18nKey.search)}" bind:value={keywordDesktop}
-           on:focus={() => search(keywordDesktop, true)}
+           on:focus={() => search(keywordDesktop)}
+           on:input={(event) => { keywordDesktop = event.currentTarget.value; keywordMobile = ""; search(keywordDesktop); }}
            class="transition-all pl-10 text-sm bg-transparent outline-0
          h-full w-40 active:w-60 focus:w-60 text-black/50 dark:text-white/50"
     >
@@ -168,6 +141,7 @@ top-20 left-4 md:left-[unset] right-4 shadow-2xl rounded-2xl p-2">
         <Icon icon="material-symbols:search"
               class="absolute text-[1.25rem] pointer-events-none ml-3 transition my-auto text-black/30 dark:text-white/30"></Icon>
         <input placeholder={i18n(I18nKey.search)} bind:value={keywordMobile}
+               on:input={(event) => { keywordMobile = event.currentTarget.value; keywordDesktop = ""; search(keywordMobile, false); }}
                class="pl-10 absolute inset-0 text-sm bg-transparent outline-0
                focus:w-60 text-black/50 dark:text-white/50"
         >
@@ -209,12 +183,12 @@ top-20 left-4 md:left-[unset] right-4 shadow-2xl rounded-2xl p-2">
                 {/if}
             </a>
         {/each}
-        {#if result.length > 5}
+        {#if total > 5}
             <a href={getSearchUrl(keywordDesktop || keywordMobile)}
                on:click={(e) => handleResultClick(e, getSearchUrl(keywordDesktop || keywordMobile))}
                class="transition first-of-type:mt-2 lg:first-of-type:mt-0 group block rounded-xl text-lg px-3 py-2 hover:bg-(--btn-plain-bg-hover) active:bg-(--btn-plain-bg-active) text-(--primary) font-bold text-center">
                 <span class="inline-flex items-center">
-                    {i18n(I18nKey.searchViewMore).replace('{count}', (result.length - 5).toString())}
+                    {i18n(I18nKey.searchViewMore).replace('{count}', (total - 5).toString())}
                     <Icon icon="fa7-solid:arrow-right" class="transition text-[0.75rem] ml-1"></Icon>
                 </span>
             </a>
